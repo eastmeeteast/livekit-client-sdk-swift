@@ -190,6 +190,14 @@ public class Room: NSObject, Loggable {
     deinit {
         log()
     }
+    
+    public func startRecordingToFile(_ filePath: String) {
+        self.engine.startRecordingToFile(filePath)
+    }
+    
+    public func stopRecordingToFile() {
+        self.engine.stopRecordingToFile()
+    }
 
     @discardableResult
     public func connect(_ url: String,
@@ -798,11 +806,6 @@ extension Room: AppStateDelegate {
 // MARK: - Devices
 
 extension Room {
-
-    @objc
-    public static var audioDeviceModule: RTCAudioDeviceModule {
-        Engine.audioDeviceModule
-    }
 
     /// Set this to true to bypass initialization of voice processing.
     /// Must be set before RTCPeerConnectionFactory gets initialized.
