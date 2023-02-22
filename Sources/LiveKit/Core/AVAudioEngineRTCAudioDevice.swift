@@ -152,14 +152,10 @@ final class AVAudioEngineRTCAudioDevice: NSObject {
         self.outrefMic = nil
     }
     
-    deinit {
+    private func shutdownEngine() {
         if self.outref != nil {
             stopRecordingToFile()
         }
-        shutdownEngine()
-    }
-    
-    private func shutdownEngine() {
         guard let audioEngine = audioEngine else {
             return
         }
@@ -176,7 +172,6 @@ final class AVAudioEngineRTCAudioDevice: NSObject {
             delegate?.notifyAudioInputInterrupted()
         }
         if let audioSourceNode = audioSourceNode {
-            audioEngine.disconnectNodeOutput(audioSourceNode)
             audioEngine.detach(audioSourceNode)
             self.audioSourceNode = nil
             delegate?.notifyAudioOutputInterrupted()
@@ -186,50 +181,25 @@ final class AVAudioEngineRTCAudioDevice: NSObject {
     
     private func updateEngine()  {
         guard let delegate = delegate,
+              shouldPlay || shouldRecord,
               !isInterrupted else {
             print("Audio Engine must be stopped: shouldPla=\(shouldPlay), shouldRecord=\(shouldRecord), isInterrupted=\(isInterrupted)")
             measureTime(label: "Shutdown AVAudioEngine") {
-                self.audioEngine?.stop()
+                self.shutdownEngine()
             }
             return
         }
-        
-//        if let audioEngine = audioEngine, !audioEngine.isInputOutputSampleRatesNativeFor(audioSession: audioSession) {
-//            print("Shutdown AVAudioEngine to match HW format")
-//            shutdownEngine()
-//        }
-        
-//        let useVoiceProcessingAudioUnit = audioSession.supportsVoiceProcessing
-//        if let audioEngine = audioEngine, audioEngine.inputNode.isVoiceProcessingEnabled != useVoiceProcessingAudioUnit {
-//            print("Shutdown AVAudioEngine to toggle usage of Voice Processing I/O")
-//            shutdownEngine()
-//        }
         
         var audioEngine: AVAudioEngine
         if let engine = self.audioEngine {
             audioEngine = engine
         } else {
-//            if !useVoiceProcessingAudioUnit {
-//                configureStereoRecording()
-//            }
             
             audioEngine = AVAudioEngine()
             audioEngine.isAutoShutdownEnabled = true
-            // NOTE: Toggle voice processing state over outputNode, not to eagerly create inputNote.
-            // Also do it just after creation of AVAudioEngine to avoid random crashes observed when voice processing changed on later stages.
-//            if audioEngine.outputNode.isVoiceProcessingEnabled != useVoiceProcessingAudioUnit {
-//                do {
-//                    // Use VPIO to as I/O audio unit.
-//                    try audioEngine.outputNode.setVoiceProcessingEnabled(useVoiceProcessingAudioUnit)
-//                }
-//                catch let e {
-//                    print("setVoiceProcessingEnabled error: \(e)")
-//                    return
-//                }
-//            }
+
             audioEngine.attach(backgroundPlayer)
             audioEngine.attach(inputEQ)
-            let outputFormat = audioEngine.outputNode.outputFormat(forBus: 0)
             audioEngine.connect(audioEngine.mainMixerNode, to: audioEngine.outputNode, format: audioOutputFormat)
             
             audioEngineObserver = NotificationCenter.default.addObserver(forName: NSNotification.Name.AVAudioEngineConfigurationChange,
@@ -242,15 +212,6 @@ final class AVAudioEngineRTCAudioDevice: NSObject {
             audioEngine.dumpState(label: "State of newly created audio engine")
             self.audioEngine = audioEngine
         }
-        
-//        let shouldBypassVoiceProcessing = shouldRecord && !shouldPlay
-//        if useVoiceProcessingAudioUnit {
-//            if audioEngine.inputNode.isVoiceProcessingBypassed != shouldBypassVoiceProcessing {
-//                measureTime(label: "Change bypass voice processing") {
-//                    audioEngine.inputNode.isVoiceProcessingBypassed = shouldBypassVoiceProcessing
-//                }
-//            }
-//        }
         
         let ioAudioUnit = audioEngine.outputNode.auAudioUnit
         if ioAudioUnit.isInputEnabled != shouldRecord ||
@@ -364,7 +325,6 @@ final class AVAudioEngineRTCAudioDevice: NSObject {
             }
         } else {
             if let audioSourceNode = audioSourceNode {
-                audioEngine.disconnectNodeOutput(audioSourceNode)
                 audioEngine.detach(audioSourceNode)
                 self.audioSourceNode = nil
             }
