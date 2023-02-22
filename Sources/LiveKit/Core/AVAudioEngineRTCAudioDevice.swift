@@ -19,24 +19,18 @@ final class AVAudioEngineRTCAudioDevice: NSObject {
     
     //Extended Audio File Services to attach to audioFile
     var outref: ExtAudioFileRef?
-    private lazy var mixerNode: AVAudioMixerNode = createMixerNode()
+    var outrefMic: ExtAudioFileRef?
     
     private var audioConverer: AVAudioConverter?
     private var audioSinkNode: AVAudioSinkNode?
-    private var audioSourceNode: AVAudioSourceNode? {
-        willSet {
-            if let newValue = newValue {
-                self.audioEngine?.connect(newValue, to: mixerNode, format: newValue.outputFormat(forBus: 0))
-            }
-        }
-    }
+    private var audioSourceNode: AVAudioSourceNode?
     private var shouldPlay = false
     private var shouldRecord = false
     
     private lazy var audioInputFormat = AVAudioFormat(commonFormat: .pcmFormatInt16,
                                                       sampleRate: audioSession.sampleRate,
                                                       channels: AVAudioChannelCount(min(2, audioSession.inputNumberOfChannels)),
-                                                      interleaved: false) {
+                                                      interleaved: true) {
         didSet {
             guard oldValue != audioInputFormat else { return }
             delegate?.notifyAudioInputParametersChange()
@@ -46,21 +40,11 @@ final class AVAudioEngineRTCAudioDevice: NSObject {
     private lazy var audioOutputFormat = AVAudioFormat(commonFormat: .pcmFormatInt16,
                                                        sampleRate: audioSession.sampleRate,
                                                        channels: AVAudioChannelCount(min(2, audioSession.outputNumberOfChannels)),
-                                                       interleaved: false) {
+                                                       interleaved: true) {
         didSet {
             guard oldValue != audioOutputFormat else { return }
             delegate?.notifyAudioOutputParametersChange()
         }
-    }
-    
-    private func createMixerNode() -> AVAudioMixerNode {
-        let mixer = AVAudioMixerNode()
-        self.audioEngine?.attach(mixer)
-        self.audioEngine?.connect(inputEQ, to: mixer, format: self.inputEQ.outputFormat(forBus: 0))
-        if let audioSourceNode = audioSourceNode {
-            self.audioEngine?.connect(audioSourceNode, to: mixer, format: audioSourceNode.outputFormat(forBus: 0))
-        }
-        return mixer
     }
     
     private var isInterrupted_ = false
@@ -107,40 +91,72 @@ final class AVAudioEngineRTCAudioDevice: NSObject {
     
     override init() {
         super.init()
-        self.mixerNode
     }
     
     func startRecordingToFile(_ filePath: String) {
-        let format = AVAudioFormat(commonFormat: AVAudioCommonFormat.pcmFormatInt16,
-                                           sampleRate: 44100.0,
-                                           channels: 1,
-                                           interleaved: true)
+        let fmt0 = self.audioEngine?.mainMixerNode.outputFormat(forBus: 0)
+        let format0 = AVAudioFormat(commonFormat: (fmt0?.commonFormat) ?? .pcmFormatFloat32,
+                                    sampleRate: fmt0?.sampleRate ?? 44100.0,
+                                    channels: fmt0?.channelCount ?? 1,
+                                    interleaved: true)
+
         //Create file to save recording
-        _ = ExtAudioFileCreateWithURL(URL(fileURLWithPath: filePath) as CFURL,
+        _ = ExtAudioFileCreateWithURL(URL(fileURLWithPath: filePath.appending(".0.wav")) as CFURL,
+                                              kAudioFileWAVEType,
+                                              (format0?.streamDescription)!,
+                                              nil,
+                                              AudioFileFlags.eraseFile.rawValue,
+                                              &outref)
+        let fmt = self.inputEQ.outputFormat(forBus: 0)
+        let format = AVAudioFormat(commonFormat: fmt.commonFormat,
+                                   sampleRate: fmt.sampleRate,
+                                   channels: fmt.channelCount,
+                                   interleaved: true)
+
+        //Create file to save recording
+        _ = ExtAudioFileCreateWithURL(URL(fileURLWithPath: filePath.appending(".1.wav")) as CFURL,
                                               kAudioFileWAVEType,
                                               (format?.streamDescription)!,
                                               nil,
                                               AudioFileFlags.eraseFile.rawValue,
-                                              &outref)
+                                              &outrefMic)
         
         //Tap on the mixer output (MIXER HAS BOTH MICROPHONE AND 1K.mp3)
-        self.mixerNode.installTap(onBus: 0, bufferSize: AVAudioFrameCount((format!.sampleRate) * 0.4), format: format, block: { (buffer: AVAudioPCMBuffer!, time: AVAudioTime!) -> Void in
+        self.audioEngine?.mainMixerNode.installTap(onBus: 0, bufferSize: AVAudioFrameCount((fmt0!.sampleRate) * 0.4), format: fmt0, block: { (buffer: AVAudioPCMBuffer!, time: AVAudioTime!) -> Void in
+
+            //Audio Recording Buffer
+            let audioBuffer : AVAudioBuffer = buffer
+
+            //Write Buffer to File
+            _ = ExtAudioFileWrite(self.outref!, buffer.frameLength, audioBuffer.audioBufferList)
+        })
+        //Tap on the mixer output (MIXER HAS BOTH MICROPHONE AND 1K.mp3)
+        self.inputEQ.installTap(onBus: 0, bufferSize: AVAudioFrameCount((fmt.sampleRate) * 0.4), format: fmt, block: { (buffer: AVAudioPCMBuffer!, time: AVAudioTime!) -> Void in
             
             //Audio Recording Buffer
             let audioBuffer : AVAudioBuffer = buffer
             
             //Write Buffer to File
-            _ = ExtAudioFileWrite(self.outref!, buffer.frameLength, audioBuffer.audioBufferList)
+            _ = ExtAudioFileWrite(self.outrefMic!, buffer.frameLength, audioBuffer.audioBufferList)
         })
     }
     
     func stopRecordingToFile() {
         //Removes tap on Engine Mixer
-        self.mixerNode.removeTap(onBus: 0)
-        
+        self.audioEngine?.mainMixerNode.removeTap(onBus: 0)
+        self.inputEQ.removeTap(onBus: 0)
         //Removes reference to audio file
         ExtAudioFileDispose(self.outref!)
         self.outref = nil
+        ExtAudioFileDispose(self.outrefMic!)
+        self.outrefMic = nil
+    }
+    
+    deinit {
+        if self.outref != nil {
+            stopRecordingToFile()
+        }
+        shutdownEngine()
     }
     
     private func shutdownEngine() {
@@ -170,11 +186,10 @@ final class AVAudioEngineRTCAudioDevice: NSObject {
     
     private func updateEngine()  {
         guard let delegate = delegate,
-              shouldPlay || shouldRecord,
               !isInterrupted else {
             print("Audio Engine must be stopped: shouldPla=\(shouldPlay), shouldRecord=\(shouldRecord), isInterrupted=\(isInterrupted)")
             measureTime(label: "Shutdown AVAudioEngine") {
-                shutdownEngine()
+                self.audioEngine?.stop()
             }
             return
         }
@@ -214,6 +229,8 @@ final class AVAudioEngineRTCAudioDevice: NSObject {
 //            }
             audioEngine.attach(backgroundPlayer)
             audioEngine.attach(inputEQ)
+            let outputFormat = audioEngine.outputNode.outputFormat(forBus: 0)
+            audioEngine.connect(audioEngine.mainMixerNode, to: audioEngine.outputNode, format: audioOutputFormat)
             
             audioEngineObserver = NotificationCenter.default.addObserver(forName: NSNotification.Name.AVAudioEngineConfigurationChange,
                                                                          object: audioEngine,
@@ -312,7 +329,7 @@ final class AVAudioEngineRTCAudioDevice: NSObject {
                         return
                     }
                     print("Playout format: \(outputFormat)")
-                    audioEngine.connect(audioEngine.mainMixerNode, to: audioEngine.outputNode, format: outputFormat)
+                    
                     
                     let rtcPlayFormat = AVAudioFormat(commonFormat: .pcmFormatInt16,
                                                       sampleRate: outputFormat.sampleRate,
