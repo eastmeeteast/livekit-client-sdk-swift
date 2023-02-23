@@ -190,6 +190,12 @@ final class AVAudioEngineRTCAudioDevice: NSObject {
             return
         }
         
+        let useVoiceProcessingAudioUnit = audioSession.supportsVoiceProcessing
+        if let audioEngine = audioEngine, audioEngine.inputNode.isVoiceProcessingEnabled != useVoiceProcessingAudioUnit {
+          print("Shutdown AVAudioEngine to toggle usage of Voice Processing I/O")
+          shutdownEngine()
+        }
+        
         var audioEngine: AVAudioEngine
         if let engine = self.audioEngine {
             audioEngine = engine
@@ -197,7 +203,18 @@ final class AVAudioEngineRTCAudioDevice: NSObject {
             
             audioEngine = AVAudioEngine()
             audioEngine.isAutoShutdownEnabled = true
-
+            // NOTE: Toggle voice processing state over outputNode, not to eagerly create inputNote.
+            // Also do it just after creation of AVAudioEngine to avoid random crashes observed when voice processing changed on later stages.
+            if audioEngine.outputNode.isVoiceProcessingEnabled != useVoiceProcessingAudioUnit {
+              do {
+                // Use VPIO to as I/O audio unit.
+                try audioEngine.outputNode.setVoiceProcessingEnabled(useVoiceProcessingAudioUnit)
+              }
+              catch let e {
+                print("setVoiceProcessingEnabled error: \(e)")
+                return
+              }
+            }
             audioEngine.attach(backgroundPlayer)
             audioEngine.attach(inputEQ)
             audioEngine.connect(audioEngine.mainMixerNode, to: audioEngine.outputNode, format: audioOutputFormat)
