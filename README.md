@@ -107,6 +107,21 @@ extension RoomViewController: RoomDelegate {
 }
 ```
 
+##In-Room Voice recording.
+Use methods provided on `Room` and `Engine` named. Be advised it will not publish on room that someone is recording a room.
+
+```
+func startRecordingToFile(_ filePath: String)
+func stopRecordingToFile()
+```
+
+For in-room voice recording it records 2 different files for audio named 
+
+`filename.0.wav` for audio recording of all pariticipents excluding your voice.
+`filename.1.wav` is recording from your microphone.
+
+It recorded on 2 different files on purpose if you want to exclude your voice from it you just have to use `filename.0.wav`.
+
 ### Screen Sharing
 
 See [iOS Screen Sharing instructions](https://github.com/livekit/client-sdk-swift/wiki/iOS-Screen-Sharing).
