@@ -107,7 +107,7 @@ extension RoomViewController: RoomDelegate {
 }
 ```
 
-##In-Room Voice recording.
+## In-Room Voice recording.
 Use methods provided on `Room` and `Engine` named. Be advised it will not publish on room that someone is recording a room.
 
 ```
