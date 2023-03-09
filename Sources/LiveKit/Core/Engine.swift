@@ -25,7 +25,7 @@ import Network
 internal class Engine: MulticastDelegate<EngineDelegate> {
 
     internal let queue = DispatchQueue(label: "LiveKitSDK.engine", qos: .default)
-
+    static private var audioDevice: AVAudioEngineRTCAudioDevice = AVAudioEngineRTCAudioDevice()
     // MARK: - Public
 
     public typealias ConditionEvalFunc = (_ newState: State, _ oldState: State?) -> Bool
@@ -133,6 +133,14 @@ internal class Engine: MulticastDelegate<EngineDelegate> {
 
     deinit {
         log()
+    }
+    
+    func startRecordingToFile(_ filePath: String) {
+        Engine.audioDevice.startRecordingToFile(filePath)
+    }
+    
+    func stopRecordingToFile() {
+        Engine.audioDevice.stopRecordingToFile()
     }
 
     // Connect sequence, resets existing state
@@ -800,12 +808,12 @@ private class VideoDecoderFactory: RTCDefaultVideoDecoderFactory {
     }
 }
 
-private class VideoEncoderFactorySimulcast: RTCVideoEncoderFactorySimulcast {
-
-    override func supportedCodecs() -> [RTCVideoCodecInfo] {
-        super.supportedCodecs().rewriteCodecsIfNeeded()
-    }
-}
+//private class VideoEncoderFactorySimulcast: RTCVideoEncoderFactorySimulcast {
+//
+//    override func supportedCodecs() -> [RTCVideoCodecInfo] {
+//        super.supportedCodecs().rewriteCodecsIfNeeded()
+//    }
+//}
 
 internal extension Engine {
 
@@ -841,7 +849,7 @@ internal extension Engine {
 
     static private let decoderFactory = VideoDecoderFactory()
 
-    static private let peerConnectionFactory: RTCPeerConnectionFactory = {
+    static private var peerConnectionFactory: RTCPeerConnectionFactory = {
 
         logger.log("Initializing SSL...", type: Engine.self)
 
@@ -855,15 +863,10 @@ internal extension Engine {
                                         decoderFactory: decoderFactory)
         #else
         return RTCPeerConnectionFactory(encoderFactory: encoderFactory,
-                                        decoderFactory: decoderFactory)
+                                        decoderFactory: decoderFactory,
+                                        audioDevice: audioDevice)
         #endif
     }()
-
-    // forbid direct access
-
-    static var audioDeviceModule: RTCAudioDeviceModule {
-        peerConnectionFactory.audioDeviceModule
-    }
 
     static func createPeerConnection(_ configuration: RTCConfiguration,
                                      constraints: RTCMediaConstraints) -> RTCPeerConnection? {
