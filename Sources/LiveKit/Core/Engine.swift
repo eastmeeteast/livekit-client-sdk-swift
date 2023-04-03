@@ -849,11 +849,16 @@ internal extension Engine {
 
     static private let decoderFactory = VideoDecoderFactory()
 
-    static private var peerConnectionFactory: RTCPeerConnectionFactory = {
+    static let peerConnectionFactory: RTCPeerConnectionFactory = {
 
         logger.log("Initializing SSL...", type: Engine.self)
 
         RTCInitializeSSL()
+
+        logger.log("Initializing Field trials...", type: Engine.self)
+
+        let fieldTrials = [kRTCFieldTrialUseNWPathMonitor: kRTCFieldTrialEnabledValue]
+        RTCInitFieldTrialDictionary(fieldTrials)
 
         logger.log("Initializing PeerConnectionFactory...", type: Engine.self)
 
