@@ -28,7 +28,7 @@ internal class SignalClient: MulticastDelegate<SignalClientDelegate> {
 
     // MARK: - Internal
 
-    internal struct State: ReconnectableState, Equatable {
+    internal struct State: ReconnectableState {
         var reconnectMode: ReconnectMode?
         var connectionState: ConnectionState = .disconnected()
         var joinResponseCompleter = Completer<Livekit_JoinResponse>()
@@ -65,16 +65,16 @@ internal class SignalClient: MulticastDelegate<SignalClientDelegate> {
         log()
 
         // trigger events when state mutates
-        self._state.onDidMutate = { [weak self] newState, oldState in
+        self._state.onMutate = { [weak self] state, oldState in
 
             guard let self = self else { return }
 
             // connectionState did update
-            if newState.connectionState != oldState.connectionState {
-                self.log("\(oldState.connectionState) -> \(newState.connectionState)")
+            if state.connectionState != oldState.connectionState {
+                self.log("\(oldState.connectionState) -> \(state.connectionState)")
             }
 
-            self.notify { $0.signalClient(self, didMutate: newState, oldState: oldState) }
+            self.notify { $0.signalClient(self, didMutate: state, oldState: oldState) }
         }
     }
 
@@ -355,10 +355,6 @@ private extension SignalClient {
             notify { $0.signalClient(self, didUpdate: token) }
         case .pong(let r):
             onReceivedPong(r)
-        case .reconnect:
-            log("received reconnect message")
-        case .pongResp:
-            log("received pongResp message")
         }
     }
 }
@@ -636,7 +632,7 @@ internal extension SignalClient {
 
     @discardableResult
     private func sendPing() -> Promise<Void> {
-        log("ping/pong: sending...", .trace)
+        log("ping/pong: sending...")
 
         let r = Livekit_SignalRequest.with {
             $0.ping = Int64(Date().timeIntervalSince1970)
@@ -677,7 +673,7 @@ private extension SignalClient {
 
     func onReceivedPong(_ r: Int64) {
 
-        log("ping/pong received pong from server", .trace)
+        log("ping/pong received pong from server")
         // clear timeout timer
         pingTimeoutTimer = nil
     }

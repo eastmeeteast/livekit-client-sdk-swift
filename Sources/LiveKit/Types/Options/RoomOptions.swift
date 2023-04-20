@@ -36,9 +36,6 @@ public class RoomOptions: NSObject {
     @objc
     public let defaultAudioPublishOptions: AudioPublishOptions
 
-    @objc
-    public let defaultDataPublishOptions: DataPublishOptions
-
     /// AdaptiveStream lets LiveKit automatically manage quality of subscribed
     /// video tracks to optimize for bandwidth and CPU.
     /// When attached video elements are visible, it'll choose an appropriate
@@ -75,7 +72,6 @@ public class RoomOptions: NSObject {
                 defaultAudioCaptureOptions: AudioCaptureOptions = AudioCaptureOptions(),
                 defaultVideoPublishOptions: VideoPublishOptions = VideoPublishOptions(),
                 defaultAudioPublishOptions: AudioPublishOptions = AudioPublishOptions(),
-                defaultDataPublishOptions: DataPublishOptions = DataPublishOptions(),
                 adaptiveStream: Bool = false,
                 dynacast: Bool = false,
                 stopLocalTrackOnUnpublish: Bool = true,
@@ -87,7 +83,6 @@ public class RoomOptions: NSObject {
         self.defaultAudioCaptureOptions = defaultAudioCaptureOptions
         self.defaultVideoPublishOptions = defaultVideoPublishOptions
         self.defaultAudioPublishOptions = defaultAudioPublishOptions
-        self.defaultDataPublishOptions = defaultDataPublishOptions
         self.adaptiveStream = adaptiveStream
         self.dynacast = dynacast
         self.stopLocalTrackOnUnpublish = stopLocalTrackOnUnpublish
@@ -104,7 +99,6 @@ public class RoomOptions: NSObject {
             self.defaultAudioCaptureOptions == other.defaultAudioCaptureOptions &&
             self.defaultVideoPublishOptions == other.defaultVideoPublishOptions &&
             self.defaultAudioPublishOptions == other.defaultAudioPublishOptions &&
-            self.defaultDataPublishOptions == other.defaultDataPublishOptions &&
             self.adaptiveStream == other.adaptiveStream &&
             self.dynacast == other.dynacast &&
             self.stopLocalTrackOnUnpublish == other.stopLocalTrackOnUnpublish &&
@@ -119,7 +113,6 @@ public class RoomOptions: NSObject {
         hasher.combine(defaultAudioCaptureOptions)
         hasher.combine(defaultVideoPublishOptions)
         hasher.combine(defaultAudioPublishOptions)
-        hasher.combine(defaultDataPublishOptions)
         hasher.combine(adaptiveStream)
         hasher.combine(dynacast)
         hasher.combine(stopLocalTrackOnUnpublish)

@@ -38,7 +38,7 @@ public class AudioManager: Loggable {
         case localAndRemote
     }
 
-    public struct State: Equatable {
+    public struct State {
         var localTracksCount: Int = 0
         var remoteTracksCount: Int = 0
         var preferSpeakerOutput: Bool = true
@@ -82,7 +82,7 @@ public class AudioManager: Loggable {
     // Singleton
     private init() {
         // trigger events when state mutates
-        _state.onDidMutate = { [weak self] newState, oldState in
+        _state.onMutate = { [weak self] newState, oldState in
             guard let self = self else { return }
             self.configureAudioSession(newState: newState, oldState: oldState)
         }

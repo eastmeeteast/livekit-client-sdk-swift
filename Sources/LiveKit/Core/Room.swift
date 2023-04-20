@@ -23,7 +23,7 @@ import Network
 #endif
 
 @objc
-public class Room: NSObject, ObservableObject, Loggable {
+public class Room: NSObject, Loggable {
 
     // MARK: - MulticastDelegate
 
@@ -85,7 +85,7 @@ public class Room: NSObject, ObservableObject, Loggable {
     // Reference to Engine
     internal let engine: Engine
 
-    internal struct State: Equatable {
+    internal struct State {
         var options: RoomOptions
 
         var sid: String?
@@ -152,12 +152,12 @@ public class Room: NSObject, ObservableObject, Loggable {
         AppStateListener.shared.add(delegate: self)
 
         // trigger events when state mutates
-        _state.onDidMutate = { [weak self] newState, oldState in
+        _state.onMutate = { [weak self] state, oldState in
 
             guard let self = self else { return }
 
             // metadata updated
-            if let metadata = newState.metadata, metadata != oldState.metadata,
+            if let metadata = state.metadata, metadata != oldState.metadata,
                // don't notify if empty string (first time only)
                (oldState.metadata == nil ? !metadata.isEmpty : true) {
 
@@ -173,20 +173,16 @@ public class Room: NSObject, ObservableObject, Loggable {
             }
 
             // isRecording updated
-            if newState.isRecording != oldState.isRecording {
+            if state.isRecording != oldState.isRecording {
                 // proceed only if connected...
                 self.engine.executeIfConnected { [weak self] in
 
                     guard let self = self else { return }
 
-                    self.delegates.notify(label: { "room.didUpdate isRecording: \(newState.isRecording)" }) {
-                        $0.room?(self, didUpdate: newState.isRecording)
+                    self.delegates.notify(label: { "room.didUpdate isRecording: \(state.isRecording)" }) {
+                        $0.room?(self, didUpdate: state.isRecording)
                     }
                 }
-            }
-
-            Task.detached { @MainActor in
-                self.objectWillChange.send()
             }
         }
     }
@@ -211,7 +207,7 @@ public class Room: NSObject, ObservableObject, Loggable {
 
         log("connecting to room...", .info)
 
-        let state = _state.copy()
+        let state = _state.readCopy()
 
         guard state.localParticipant == nil else {
             log("localParticipant is not nil", .warning)
@@ -337,13 +333,13 @@ extension Room {
         engine.signalClient.sendSimulate(scenario: scenario)
     }
 
-    public func waitForPrimaryTransportConnect() -> Promise<Bool> {
+    public func waitForPrimaryTransportConnect() -> Promise<Void> {
         engine._state.mutate {
             $0.primaryTransportConnectedCompleter.wait(on: queue, .defaultTransportState, throw: { TransportError.timedOut(message: "primary transport didn't connect") })
         }
     }
 
-    public func waitForPublisherTransportConnect() -> Promise<Bool> {
+    public func waitForPublisherTransportConnect() -> Promise<Void> {
         engine._state.mutate {
             $0.publisherTransportConnectedCompleter.wait(on: queue, .defaultTransportState, throw: { TransportError.timedOut(message: "publisher transport didn't connect") })
         }
@@ -645,11 +641,6 @@ extension Room: EngineDelegate {
             // started full reconnect
             cleanUpParticipants(notify: true)
         }
-
-        // Notify change when engine's state mutates
-        Task.detached { @MainActor in
-            self.objectWillChange.send()
-        }
     }
 
     func engine(_ engine: Engine, didGenerate trackStats: [TrackStats], target: Livekit_SignalTarget) {
@@ -766,19 +757,13 @@ extension Room: EngineDelegate {
             guard let self = self else { return }
 
             self.delegates.notify(label: { "room.didReceive data: \(userPacket.payload)" }) {
-                // deprecated
                 $0.room?(self, participant: participant, didReceive: userPacket.payload)
-                // new method with topic param
-                $0.room?(self, participant: participant, didReceiveData: userPacket.payload, topic: userPacket.topic)
             }
 
             if let participant = participant {
                 participant.delegates.notify(label: { "participant.didReceive data: \(userPacket.payload)" }) { [weak participant] (delegate) -> Void in
                     guard let participant = participant else { return }
-                    // deprecated
                     delegate.participant?(participant, didReceive: userPacket.payload)
-                    // new method with topic param
-                    delegate.participant?(participant, didReceiveData: userPacket.payload, topic: userPacket.topic)
                 }
             }
         }
@@ -832,5 +817,37 @@ extension Room {
     public static var bypassVoiceProcessing: Bool {
         get { Engine.bypassVoiceProcessing }
         set { Engine.bypassVoiceProcessing = newValue }
+    }
+}
+
+// MARK: - MulticastDelegate
+
+extension Room: MulticastDelegateProtocol {
+
+    public func add(delegate: RoomDelegate) {
+        delegates.add(delegate: delegate)
+    }
+
+    public func remove(delegate: RoomDelegate) {
+        delegates.remove(delegate: delegate)
+    }
+
+    @objc
+    public func removeAllDelegates() {
+        delegates.removeAllDelegates()
+    }
+
+    /// Only for Objective-C.
+    @objc(addDelegate:)
+    @available(swift, obsoleted: 1.0)
+    public func addObjC(delegate: RoomDelegateObjC) {
+        delegates.add(delegate: delegate)
+    }
+
+    /// Only for Objective-C.
+    @objc(removeDelegate:)
+    @available(swift, obsoleted: 1.0)
+    public func removeObjC(delegate: RoomDelegateObjC) {
+        delegates.remove(delegate: delegate)
     }
 }
