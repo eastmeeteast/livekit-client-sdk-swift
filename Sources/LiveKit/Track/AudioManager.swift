@@ -143,8 +143,8 @@ public class AudioManager: Loggable {
             var categoryOptions: AVAudioSession.CategoryOptions = []
 
             if newState.trackState == .remoteOnly && newState.preferSpeakerOutput {
-                configuration.category = AVAudioSession.Category.playback.rawValue
-                configuration.mode = AVAudioSession.Mode.spokenAudio.rawValue
+                configuration.category = AVAudioSession.Category.playAndRecord.rawValue
+                configuration.mode = AVAudioSession.Mode.videoChat.rawValue
 
             } else if [.localOnly, .localAndRemote].contains(newState.trackState) ||
                         (newState.trackState == .remoteOnly && !newState.preferSpeakerOutput) {
@@ -159,13 +159,17 @@ public class AudioManager: Loggable {
                     configuration.mode = AVAudioSession.Mode.voiceChat.rawValue
                 }
 
-                categoryOptions = [.allowBluetooth, .allowBluetoothA2DP]
-
             } else {
                 configuration.category = AVAudioSession.Category.soloAmbient.rawValue
                 configuration.mode = AVAudioSession.Mode.default.rawValue
             }
 
+            if #available(iOS 14.5, *) {
+                categoryOptions = [.defaultToSpeaker, .allowBluetooth, .mixWithOthers, .overrideMutedMicrophoneInterruption]
+            } else {
+                categoryOptions = [.defaultToSpeaker, .allowBluetooth, .mixWithOthers]
+
+            }
             configuration.categoryOptions = categoryOptions
 
             var setActive: Bool?
