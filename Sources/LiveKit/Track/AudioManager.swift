@@ -144,8 +144,7 @@ public class AudioManager: Loggable {
 
             if newState.trackState == .remoteOnly && newState.preferSpeakerOutput {
                 configuration.category = AVAudioSession.Category.playAndRecord.rawValue
-                configuration.mode = AVAudioSession.Mode.videoChat.rawValue
-
+                configuration.mode = self.hasMacCatalyst ? AVAudioSession.Mode.default.rawValue :  AVAudioSession.Mode.videoChat.rawValue
             } else if [.localOnly, .localAndRemote].contains(newState.trackState) ||
                         (newState.trackState == .remoteOnly && !newState.preferSpeakerOutput) {
 
@@ -153,12 +152,11 @@ public class AudioManager: Loggable {
 
                 if newState.preferSpeakerOutput {
                     // use .videoChat if speakerOutput is preferred
-                    configuration.mode = AVAudioSession.Mode.videoChat.rawValue
+                    configuration.mode = self.hasMacCatalyst ? AVAudioSession.Mode.default.rawValue :  AVAudioSession.Mode.videoChat.rawValue
                 } else {
                     // use .voiceChat if speakerOutput is not preferred
-                    configuration.mode = AVAudioSession.Mode.voiceChat.rawValue
+                    configuration.mode = self.hasMacCatalyst ? AVAudioSession.Mode.default.rawValue :  AVAudioSession.Mode.voiceChat.rawValue
                 }
-
             } else {
                 configuration.category = AVAudioSession.Category.soloAmbient.rawValue
                 configuration.mode = AVAudioSession.Mode.default.rawValue
@@ -168,7 +166,6 @@ public class AudioManager: Loggable {
                 categoryOptions = [.defaultToSpeaker, .allowBluetooth, .mixWithOthers, .overrideMutedMicrophoneInterruption]
             } else {
                 categoryOptions = [.defaultToSpeaker, .allowBluetooth, .mixWithOthers]
-
             }
             configuration.categoryOptions = categoryOptions
 
@@ -203,4 +200,16 @@ public class AudioManager: Loggable {
         }
     }
     #endif
+
+    var hasMacCatalyst: Bool {
+        #if targetEnvironment(macCatalyst)
+            return true
+        #else
+        if #available(iOS 14.0, *) {
+            return ProcessInfo.processInfo.isiOSAppOnMac
+        } else {
+            return false
+        }
+        #endif
+    }
 }

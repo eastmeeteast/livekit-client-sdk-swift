@@ -7,7 +7,6 @@ import AudioToolbox
 final class AVAudioEngineRTCAudioDevice: NSObject {
     let audioSession = AVAudioSession.sharedInstance()
     private var subscribtions: [Any]?
-    
     private let queue = DispatchQueue(label: "AVAudioEngineRTCAudioDevice")
     
     private lazy var backgroundPlayer = AVAudioPlayerNode()
@@ -15,11 +14,11 @@ final class AVAudioEngineRTCAudioDevice: NSObject {
     
     private var audioEngine: AVAudioEngine?
     private var audioEngineObserver: Any?
-    private var inputEQ = AVAudioUnitEQ(numberOfBands: 2)
+    private var audioEQ = AVAudioUnitEQ(numberOfBands: 2)
     
     //Extended Audio File Services to attach to audioFile
-    var outref: ExtAudioFileRef?
-    var outrefMic: ExtAudioFileRef?
+    private var outref: ExtAudioFileRef?
+    private var outrefMic: ExtAudioFileRef?
     
     private var audioConverer: AVAudioConverter?
     private var audioSinkNode: AVAudioSinkNode?
@@ -36,7 +35,7 @@ final class AVAudioEngineRTCAudioDevice: NSObject {
             delegate?.notifyAudioInputParametersChange()
         }
     }
-    
+
     private lazy var audioOutputFormat = AVAudioFormat(commonFormat: .pcmFormatInt16,
                                                        sampleRate: audioSession.sampleRate,
                                                        channels: AVAudioChannelCount(min(2, audioSession.outputNumberOfChannels)),
@@ -46,33 +45,17 @@ final class AVAudioEngineRTCAudioDevice: NSObject {
             delegate?.notifyAudioOutputParametersChange()
         }
     }
-    
+
     private var isInterrupted_ = false
     private var isInterrupted: Bool {
-        get {
-            queue.sync {
-                isInterrupted_
-            }
-        }
-        set {
-            queue.sync {
-                isInterrupted_ = newValue
-            }
-        }
+        get { queue.sync { isInterrupted_ } }
+        set { queue.sync { isInterrupted_ = newValue } }
     }
     
     var delegate_: RTCAudioDeviceDelegate?
     private var delegate: RTCAudioDeviceDelegate? {
-        get {
-            queue.sync {
-                delegate_
-            }
-        }
-        set {
-            queue.sync {
-                delegate_ = newValue
-            }
-        }
+        get { queue.sync { delegate_ } }
+        set { queue.sync { delegate_ = newValue } }
     }
     
     private (set) lazy var inputLatency = audioSession.inputLatency {
@@ -94,62 +77,51 @@ final class AVAudioEngineRTCAudioDevice: NSObject {
     }
     
     func startRecordingToFile(_ filePath: String) {
-        let fmt0 = self.audioEngine?.mainMixerNode.outputFormat(forBus: 0)
-        let format0 = AVAudioFormat(commonFormat: (fmt0?.commonFormat) ?? .pcmFormatFloat32,
-                                    sampleRate: fmt0?.sampleRate ?? 44100.0,
-                                    channels: fmt0?.channelCount ?? 1,
-                                    interleaved: true)
+        guard let audioEngine = audioEngine else { return }
+
+        let format0 = audioEngine.mainMixerNode.outputFormat(forBus: 0)
+        let format1 = audioEQ.outputFormat(forBus: 0)
 
         //Create file to save recording
-        _ = ExtAudioFileCreateWithURL(URL(fileURLWithPath: filePath.appending(".0.wav")) as CFURL,
-                                              kAudioFileWAVEType,
-                                              (format0?.streamDescription)!,
-                                              nil,
-                                              AudioFileFlags.eraseFile.rawValue,
-                                              &outref)
-        let fmt = self.inputEQ.outputFormat(forBus: 0)
-        let format = AVAudioFormat(commonFormat: fmt.commonFormat,
-                                   sampleRate: fmt.sampleRate,
-                                   channels: fmt.channelCount,
-                                   interleaved: true)
+        let url0 = URL(fileURLWithPath: filePath.appending(".0.wav"))
+        _ = ExtAudioFileCreateWithURL(url0 as CFURL,
+                                      kAudioFileWAVEType,
+                                      format0.streamDescription,
+                                      nil,
+                                      AudioFileFlags.eraseFile.rawValue,
+                                      &outref)
 
-        //Create file to save recording
-        _ = ExtAudioFileCreateWithURL(URL(fileURLWithPath: filePath.appending(".1.wav")) as CFURL,
-                                              kAudioFileWAVEType,
-                                              (format?.streamDescription)!,
-                                              nil,
-                                              AudioFileFlags.eraseFile.rawValue,
-                                              &outrefMic)
-        
-        //Tap on the mixer output (MIXER HAS BOTH MICROPHONE AND 1K.mp3)
-        self.audioEngine?.mainMixerNode.installTap(onBus: 0, bufferSize: AVAudioFrameCount((fmt0!.sampleRate) * 0.4), format: fmt0, block: { (buffer: AVAudioPCMBuffer!, time: AVAudioTime!) -> Void in
+        let url1 = URL(fileURLWithPath: filePath.appending(".1.wav"))
+        _ = ExtAudioFileCreateWithURL(url1 as CFURL,
+                                      kAudioFileWAVEType,
+                                      format1.streamDescription,
+                                      nil,
+                                      AudioFileFlags.eraseFile.rawValue,
+                                      &outrefMic)
 
-            //Audio Recording Buffer
-            let audioBuffer : AVAudioBuffer = buffer
+        let bufferSize = AVAudioFrameCount(max(format0.sampleRate * 0.4, 1024))
 
-            //Write Buffer to File
-            _ = ExtAudioFileWrite(self.outref!, buffer.frameLength, audioBuffer.audioBufferList)
-        })
-        //Tap on the mixer output (MIXER HAS BOTH MICROPHONE AND 1K.mp3)
-        self.inputEQ.installTap(onBus: 0, bufferSize: AVAudioFrameCount((fmt.sampleRate) * 0.4), format: fmt, block: { (buffer: AVAudioPCMBuffer!, time: AVAudioTime!) -> Void in
-            
-            //Audio Recording Buffer
-            let audioBuffer : AVAudioBuffer = buffer
-            
-            //Write Buffer to File
-            _ = ExtAudioFileWrite(self.outrefMic!, buffer.frameLength, audioBuffer.audioBufferList)
-        })
+        audioEngine.mainMixerNode.installTap(onBus: 0, bufferSize: bufferSize, format: format0) { [weak self] (buffer, time) in
+            guard let self = self else { return }
+            ExtAudioFileWriteAsync(self.outref!, bufferSize, buffer.audioBufferList)
+        }
+
+        audioEQ.installTap(onBus: 0, bufferSize: bufferSize, format: format1) { [weak self] (buffer, time) in
+            guard let self = self else { return }
+            ExtAudioFileWriteAsync(self.outrefMic!, bufferSize, buffer.audioBufferList)
+        }
     }
     
     func stopRecordingToFile() {
+        guard let audioEngine = audioEngine else { return }
         //Removes tap on Engine Mixer
-        self.audioEngine?.mainMixerNode.removeTap(onBus: 0)
-        self.inputEQ.removeTap(onBus: 0)
-        //Removes reference to audio file
-        ExtAudioFileDispose(self.outref!)
-        self.outref = nil
-        ExtAudioFileDispose(self.outrefMic!)
-        self.outrefMic = nil
+        audioEngine.mainMixerNode.removeTap(onBus: 0)
+        audioEQ.removeTap(onBus: 0)
+
+        ExtAudioFileDispose(outref!)
+        ExtAudioFileDispose(outrefMic!)
+        outref = nil
+        outrefMic = nil
     }
     
     private func shutdownEngine() {
@@ -191,7 +163,7 @@ final class AVAudioEngineRTCAudioDevice: NSObject {
         }
         
         let useVoiceProcessingAudioUnit = audioSession.supportsVoiceProcessing
-        if let audioEngine = audioEngine, audioEngine.inputNode.isVoiceProcessingEnabled != useVoiceProcessingAudioUnit {
+        if let audioEngine = audioEngine, audioEngine.outputNode.isVoiceProcessingEnabled != useVoiceProcessingAudioUnit {
           print("Shutdown AVAudioEngine to toggle usage of Voice Processing I/O")
           shutdownEngine()
         }
@@ -200,7 +172,6 @@ final class AVAudioEngineRTCAudioDevice: NSObject {
         if let engine = self.audioEngine {
             audioEngine = engine
         } else {
-            
             audioEngine = AVAudioEngine()
             audioEngine.isAutoShutdownEnabled = true
             // NOTE: Toggle voice processing state over outputNode, not to eagerly create inputNote.
@@ -215,17 +186,19 @@ final class AVAudioEngineRTCAudioDevice: NSObject {
                 return
               }
             }
-            audioEngine.attach(backgroundPlayer)
-            audioEngine.attach(inputEQ)
+            if backgroundSound != nil {
+                audioEngine.attach(backgroundPlayer)
+            }
+            audioEngine.attach(audioEQ)
             audioEngine.connect(audioEngine.mainMixerNode, to: audioEngine.outputNode, format: audioOutputFormat)
-            
+
             audioEngineObserver = NotificationCenter.default.addObserver(forName: NSNotification.Name.AVAudioEngineConfigurationChange,
                                                                          object: audioEngine,
                                                                          queue: nil,
                                                                          using: { [weak self] notification in
                 self?.handleAudioEngineConfigurationChanged()
             })
-            
+
             audioEngine.dumpState(label: "State of newly created audio engine")
             self.audioEngine = audioEngine
         }
@@ -254,20 +227,19 @@ final class AVAudioEngineRTCAudioDevice: NSObject {
                         print("Invalid input format: \(inputFormat)")
                         return
                     }
-                    
-                    print("Record format: \(inputFormat)")
-                    audioEngine.connect(audioEngine.inputNode, to: inputEQ, format: inputFormat)
-                    
-                    let rtcRecordFormat = AVAudioFormat(commonFormat: .pcmFormatInt16,
+
+                    guard let rtcRecordFormat = AVAudioFormat(commonFormat: .pcmFormatInt16,
                                                         sampleRate: inputFormat.sampleRate,
                                                         channels: inputFormat.channelCount,
-                                                        interleaved: true)!
+                                                              interleaved: true) else { return }
+                    audioEngine.connect(audioEngine.inputNode, to: audioEQ, format: inputFormat)
+
                     audioInputFormat = rtcRecordFormat
                     inputLatency = audioSession.inputLatency
                     
                     // NOTE: AVAudioSinkNode provides audio data with HW sample rate in 32-bit float format,
                     // WebRTC requires 16-bit int format, so do the conversion
-                    let converter = SimpleAudioConverter(from: inputFormat, to: rtcRecordFormat)!
+                    guard let converter = SimpleAudioConverter(from: inputFormat, to: rtcRecordFormat) else { return }
                     
                     let customRenderBlock: RTCAudioDeviceRenderRecordedDataBlock = { actionFlags, timestamp, inputBusNumber, frameCount, abl, renderContext in
                         let (converter, inputData) = renderContext!.assumingMemoryBound(to: (Unmanaged<SimpleAudioConverter>, UnsafeMutablePointer<AudioBufferList>).self).pointee
@@ -285,7 +257,7 @@ final class AVAudioEngineRTCAudioDevice: NSObject {
                     }
                     
                     measureTime(label: "Connect AVAudioSinkNode") {
-                        audioEngine.connect(inputEQ, to: audioSink, format: inputFormat)
+                        audioEngine.connect(audioEQ, to: audioSink, format: inputFormat)
                     }
                     
                     audioSinkNode = audioSink
@@ -306,20 +278,16 @@ final class AVAudioEngineRTCAudioDevice: NSObject {
                         print("Invalid audio output format detected: \(outputFormat)")
                         return
                     }
-                    print("Playout format: \(outputFormat)")
-                    
-                    
-                    let rtcPlayFormat = AVAudioFormat(commonFormat: .pcmFormatInt16,
-                                                      sampleRate: outputFormat.sampleRate,
-                                                      channels: outputFormat.channelCount,
-                                                      interleaved: true)!
+
+                    guard let rtcPlayFormat = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: outputFormat.sampleRate, channels: outputFormat.channelCount, interleaved: true) else {
+                        return
+                    }
                     
                     audioOutputFormat = rtcPlayFormat
-                    inputLatency = audioSession.inputLatency
-                    
+                    outputLatency = audioSession.outputLatency
+
                     let getPlayoutData = delegate.getPlayoutData
-                    let audioSource = AVAudioSourceNode(format: rtcPlayFormat,
-                                                        renderBlock: { (isSilence, timestamp, frameCount, outputData) -> OSStatus in
+                    let audioSource = AVAudioSourceNode(format: rtcPlayFormat, renderBlock: { (isSilence, timestamp, frameCount, outputData) -> OSStatus in
                         var flags: AudioUnitRenderActionFlags = []
                         let res = getPlayoutData(&flags, timestamp, 0, frameCount, outputData)
                         guard noErr == res else {
@@ -374,7 +342,7 @@ final class AVAudioEngineRTCAudioDevice: NSObject {
         
         audioEngine.dumpState(label: "After updateEngine")
     }
-    
+
     private func handleAudioEngineConfigurationChanged() {
         guard let delegate = delegate else {
             return
@@ -385,6 +353,7 @@ final class AVAudioEngineRTCAudioDevice: NSObject {
     }
 }
 
+// MARK: - RTCAudioDevice
 extension AVAudioEngineRTCAudioDevice: RTCAudioDevice {
     
     var deviceInputSampleRate: Double {
@@ -424,20 +393,13 @@ extension AVAudioEngineRTCAudioDevice: RTCAudioDevice {
     }
     
     func initialize(with delegate: RTCAudioDeviceDelegate) -> Bool {
-        guard self.delegate == nil else {
-            print("Already inititlized")
-            return false
-        }
-        
+        guard self.delegate == nil else { return false }
+
         if subscribtions == nil {
             subscribtions = self.subscribeAudioSessionNotifications()
         }
         
         self.delegate = delegate
-        
-        if let fxURL = Bundle.main.url(forResource: "Synth", withExtension: "aif") {
-            backgroundSound = getBuffer(fileURL: fxURL)
-        }
         return true
     }
     
@@ -467,7 +429,6 @@ extension AVAudioEngineRTCAudioDevice: RTCAudioDevice {
     }
     
     func startPlayout() -> Bool {
-        print("Start playout")
         shouldPlay = true
         measureTime {
             updateEngine()
@@ -476,7 +437,6 @@ extension AVAudioEngineRTCAudioDevice: RTCAudioDevice {
     }
     
     func stopPlayout() -> Bool {
-        print("Stop playout")
         shouldPlay = false
         measureTime {
             updateEngine()
@@ -495,7 +455,6 @@ extension AVAudioEngineRTCAudioDevice: RTCAudioDevice {
     }
     
     func startRecording() -> Bool {
-        print("Start recording")
         shouldRecord = true
         measureTime {
             updateEngine()
@@ -504,7 +463,6 @@ extension AVAudioEngineRTCAudioDevice: RTCAudioDevice {
     }
     
     func stopRecording() -> Bool {
-        print("Stop recording")
         shouldRecord = false
         measureTime {
             updateEngine()
@@ -520,9 +478,7 @@ extension AVAudioEngineRTCAudioDevice: AudioSessionHandler {
             return
         }
         isInterrupted = true
-        guard let delegate = delegate else {
-            return
-        }
+        guard let delegate = delegate else { return }
         delegate.dispatchAsync { [weak self] in
             self?.updateEngine()
         }
@@ -530,9 +486,7 @@ extension AVAudioEngineRTCAudioDevice: AudioSessionHandler {
     
     func handleInterruptionEnd(shouldResume: Bool) {
         isInterrupted = false
-        guard let delegate = delegate else {
-            return
-        }
+        guard let delegate = delegate else { return }
         delegate.dispatchAsync { [weak self] in
             self?.updateEngine()
         }
