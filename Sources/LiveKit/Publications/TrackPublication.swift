@@ -17,21 +17,20 @@
 import Foundation
 import CoreGraphics
 import Promises
-import Combine
 
 @objc
-public class TrackPublication: NSObject, ObservableObject, TrackDelegate, Loggable {
+public class TrackPublication: NSObject, TrackDelegate, Loggable {
 
-    // MARK: - Public properties
-
-    @objc
-    public var sid: Sid { _state.sid }
+    internal let queue = DispatchQueue(label: "LiveKitSDK.publication", qos: .default)
 
     @objc
-    public var kind: Track.Kind { _state.kind }
+    public let sid: Sid
 
     @objc
-    public var source: Track.Source { _state.source }
+    public let kind: Track.Kind
+
+    @objc
+    public let source: Track.Source
 
     @objc
     public var name: String { _state.name }
@@ -61,17 +60,11 @@ public class TrackPublication: NSObject, ObservableObject, TrackDelegate, Loggab
 
     // MARK: - Internal
 
-    internal let queue = DispatchQueue(label: "LiveKitSDK.publication", qos: .default)
-
     /// Reference to the ``Participant`` this publication belongs to.
     internal weak var participant: Participant?
     internal private(set) var latestInfo: Livekit_TrackInfo?
 
-    internal struct State: Equatable, Hashable {
-        let sid: Sid
-        let kind: Track.Kind
-        let source: Track.Source
-
+    internal struct State {
         var track: Track?
         var name: String
         var mimeType: String
@@ -84,11 +77,6 @@ public class TrackPublication: NSObject, ObservableObject, TrackDelegate, Loggab
         var trackSettings = TrackSettings()
         //
         var isSendingTrackSettings: Bool = false
-
-        // Only for RemoteTrackPublications
-        // user's preference to subscribe or not
-        var preferSubscribed: Bool?
-        var metadataMuted: Bool = false
     }
 
     internal var _state: StateSync<State>
@@ -97,14 +85,15 @@ public class TrackPublication: NSObject, ObservableObject, TrackDelegate, Loggab
                   track: Track? = nil,
                   participant: Participant) {
 
+        // initial state
         _state = StateSync(State(
-            sid: info.sid,
-            kind: info.type.toLKType(),
-            source: info.source.toLKType(),
             name: info.name,
             mimeType: info.mimeType
         ))
 
+        self.sid = info.sid
+        self.kind = info.type.toLKType()
+        self.source = info.source.toLKType()
         self.participant = participant
 
         super.init()
@@ -116,23 +105,19 @@ public class TrackPublication: NSObject, ObservableObject, TrackDelegate, Loggab
         track?.add(delegate: self)
 
         // trigger events when state mutates
-        self._state.onDidMutate = { [weak self] newState, oldState in
+        self._state.onMutate = { [weak self] state, oldState in
 
             guard let self = self else { return }
 
-            if newState.streamState != oldState.streamState {
+            if state.streamState != oldState.streamState {
                 if let participant = self.participant as? RemoteParticipant, let trackPublication = self as? RemoteTrackPublication {
-                    participant.delegates.notify(label: { "participant.didUpdate \(trackPublication) streamState: \(newState.streamState)" }) {
-                        $0.participant?(participant, didUpdate: trackPublication, streamState: newState.streamState)
+                    participant.delegates.notify(label: { "participant.didUpdate \(trackPublication) streamState: \(state.streamState)" }) {
+                        $0.participant?(participant, didUpdate: trackPublication, streamState: state.streamState)
                     }
-                    participant.room.delegates.notify(label: { "room.didUpdate \(trackPublication) streamState: \(newState.streamState)" }) {
-                        $0.room?(participant.room, participant: participant, didUpdate: trackPublication, streamState: newState.streamState)
+                    participant.room.delegates.notify(label: { "room.didUpdate \(trackPublication) streamState: \(state.streamState)" }) {
+                        $0.room?(participant.room, participant: participant, didUpdate: trackPublication, streamState: state.streamState)
                     }
                 }
-            }
-
-            Task.detached { @MainActor in
-                self.objectWillChange.send()
             }
         }
     }
@@ -207,11 +192,19 @@ public class TrackPublication: NSObject, ObservableObject, TrackDelegate, Loggab
                 participant.room.delegates.notify {
                     $0.room?(participant.room, participant: participant, didUpdate: self, muted: self.muted)
                 }
-                // TrackPublication.muted is a computed property depending on Track.muted
-                // so emit event on TrackPublication when Track.muted updates
-                Task.detached { @MainActor in
-                    self.objectWillChange.send()
-                }
             }
+    }
+
+    // MARK: - Equal
+
+    public override func isEqual(_ object: Any?) -> Bool {
+        guard let other = object as? Self else { return false }
+        return self.sid == other.sid
+    }
+
+    public override var hash: Int {
+        var hasher = Hasher()
+        hasher.combine(sid)
+        return hasher.finalize()
     }
 }

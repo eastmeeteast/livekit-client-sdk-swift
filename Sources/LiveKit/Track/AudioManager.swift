@@ -38,7 +38,7 @@ public class AudioManager: Loggable {
         case localAndRemote
     }
 
-    public struct State: Equatable {
+    public struct State {
         var localTracksCount: Int = 0
         var remoteTracksCount: Int = 0
         var preferSpeakerOutput: Bool = true
@@ -82,7 +82,7 @@ public class AudioManager: Loggable {
     // Singleton
     private init() {
         // trigger events when state mutates
-        _state.onDidMutate = { [weak self] newState, oldState in
+        _state.onMutate = { [weak self] newState, oldState in
             guard let self = self else { return }
             self.configureAudioSession(newState: newState, oldState: oldState)
         }
@@ -143,9 +143,8 @@ public class AudioManager: Loggable {
             var categoryOptions: AVAudioSession.CategoryOptions = []
 
             if newState.trackState == .remoteOnly && newState.preferSpeakerOutput {
-                configuration.category = AVAudioSession.Category.playback.rawValue
-                configuration.mode = AVAudioSession.Mode.spokenAudio.rawValue
-
+                configuration.category = AVAudioSession.Category.playAndRecord.rawValue
+                configuration.mode = self.hasMacCatalyst ? AVAudioSession.Mode.default.rawValue :  AVAudioSession.Mode.videoChat.rawValue
             } else if [.localOnly, .localAndRemote].contains(newState.trackState) ||
                         (newState.trackState == .remoteOnly && !newState.preferSpeakerOutput) {
 
@@ -153,19 +152,21 @@ public class AudioManager: Loggable {
 
                 if newState.preferSpeakerOutput {
                     // use .videoChat if speakerOutput is preferred
-                    configuration.mode = AVAudioSession.Mode.videoChat.rawValue
+                    configuration.mode = self.hasMacCatalyst ? AVAudioSession.Mode.default.rawValue :  AVAudioSession.Mode.videoChat.rawValue
                 } else {
                     // use .voiceChat if speakerOutput is not preferred
-                    configuration.mode = AVAudioSession.Mode.voiceChat.rawValue
+                    configuration.mode = self.hasMacCatalyst ? AVAudioSession.Mode.default.rawValue :  AVAudioSession.Mode.voiceChat.rawValue
                 }
-
-                categoryOptions = [.allowBluetooth, .allowBluetoothA2DP]
-
             } else {
                 configuration.category = AVAudioSession.Category.soloAmbient.rawValue
                 configuration.mode = AVAudioSession.Mode.default.rawValue
             }
 
+            if #available(iOS 14.5, *) {
+                categoryOptions = [.defaultToSpeaker, .allowBluetooth, .mixWithOthers, .overrideMutedMicrophoneInterruption]
+            } else {
+                categoryOptions = [.defaultToSpeaker, .allowBluetooth, .mixWithOthers]
+            }
             configuration.categoryOptions = categoryOptions
 
             var setActive: Bool?
@@ -199,4 +200,16 @@ public class AudioManager: Loggable {
         }
     }
     #endif
+
+    var hasMacCatalyst: Bool {
+        #if targetEnvironment(macCatalyst)
+            return true
+        #else
+        if #available(iOS 14.0, *) {
+            return ProcessInfo.processInfo.isiOSAppOnMac
+        } else {
+            return false
+        }
+        #endif
+    }
 }

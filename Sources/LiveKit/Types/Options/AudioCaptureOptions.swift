@@ -54,7 +54,7 @@ public class AudioCaptureOptions: NSObject, CaptureOptions {
         self.highpassFilter = highpassFilter
     }
 
-    // MARK: - Equatable
+    // MARK: - Equal
 
     public override func isEqual(_ object: Any?) -> Bool {
         guard let other = object as? Self else { return false }

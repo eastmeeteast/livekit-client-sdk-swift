@@ -28,7 +28,7 @@ internal class SignalClient: MulticastDelegate<SignalClientDelegate> {
 
     // MARK: - Internal
 
-    internal struct State: ReconnectableState, Equatable {
+    internal struct State: ReconnectableState {
         var reconnectMode: ReconnectMode?
         var connectionState: ConnectionState = .disconnected()
         var joinResponseCompleter = Completer<Livekit_JoinResponse>()
@@ -65,16 +65,16 @@ internal class SignalClient: MulticastDelegate<SignalClientDelegate> {
         log()
 
         // trigger events when state mutates
-        self._state.onDidMutate = { [weak self] newState, oldState in
+        self._state.onMutate = { [weak self] state, oldState in
 
             guard let self = self else { return }
 
             // connectionState did update
-            if newState.connectionState != oldState.connectionState {
-                self.log("\(oldState.connectionState) -> \(newState.connectionState)")
+            if state.connectionState != oldState.connectionState {
+                self.log("\(oldState.connectionState) -> \(state.connectionState)")
             }
 
-            self.notify { $0.signalClient(self, didMutate: newState, oldState: oldState) }
+            self.notify { $0.signalClient(self, didMutate: state, oldState: oldState) }
         }
     }
 
@@ -139,7 +139,7 @@ internal class SignalClient: MulticastDelegate<SignalClientDelegate> {
                     }
                     self.log("validate response: \(string)")
                     // re-throw with validation response
-                    throw SignalClientError.connect(message: string)
+                    throw SignalClientError.connect(message: "Validation response: \"\(string)\"")
                 }
             }.catch(on: queue) { error in
                 self.cleanUp(reason: .networkError(error))
@@ -355,10 +355,6 @@ private extension SignalClient {
             notify { $0.signalClient(self, didUpdate: token) }
         case .pong(let r):
             onReceivedPong(r)
-        case .reconnect:
-            log("received reconnect message")
-        case .pongResp:
-            log("received pongResp message")
         }
     }
 }
@@ -621,17 +617,30 @@ internal extension SignalClient {
     @discardableResult
     func sendSimulate(scenario: SimulateScenario) -> Promise<Void> {
         log()
-
+        var shouldDisconnect = false
         let r = Livekit_SignalRequest.with {
             $0.simulate = Livekit_SimulateScenario.with {
-                if case .nodeFailure = scenario { $0.nodeFailure = true }
-                if case .migration = scenario { $0.migration = true }
-                if case .serverLeave = scenario { $0.serverLeave = true }
-                if case .speakerUpdate(let secs) = scenario { $0.speakerUpdate = Int32(secs) }
+                switch scenario {
+                 case .nodeFailure: $0.nodeFailure = true
+                 case .migration: $0.migration = true
+                 case .serverLeave: $0.serverLeave = true
+                 case .speakerUpdate(let secs): $0.speakerUpdate = Int32(secs)
+                 case .forceTCP:
+                     $0.switchCandidateProtocol = Livekit_CandidateProtocol.tcp
+                     shouldDisconnect = true
+                 case .forceTLS:
+                     $0.switchCandidateProtocol = Livekit_CandidateProtocol.tls
+                     shouldDisconnect = true
+                 }
+
             }
         }
-
-        return sendRequest(r)
+        return sendRequest(r).then(on: queue) {
+            if shouldDisconnect {
+                let sdkError = NetworkError.disconnected(message: "Simulate scenario")
+                self.cleanUp(reason: .networkError(sdkError))
+            }
+        }
     }
 
     @discardableResult
@@ -676,7 +685,6 @@ private extension SignalClient {
     }
 
     func onReceivedPong(_ r: Int64) {
-
         log("ping/pong received pong from server", .trace)
         // clear timeout timer
         pingTimeoutTimer = nil

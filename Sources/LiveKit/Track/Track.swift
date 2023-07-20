@@ -21,7 +21,11 @@ import Promises
 @objc
 public class Track: NSObject, Loggable {
 
-    // MARK: - Static constants
+    // MARK: - MulticastDelegate
+
+    internal var delegates = MulticastDelegate<TrackDelegate>()
+
+    internal let queue = DispatchQueue(label: "LiveKitSDK.track", qos: .default)
 
     @objc
     public static let cameraName = "camera"
@@ -34,8 +38,6 @@ public class Track: NSObject, Loggable {
 
     @objc
     public static let screenShareAudioName = "screen_share_audio"
-
-    // MARK: - Public types
 
     @objc(TrackKind)
     public enum Kind: Int, Codable {
@@ -57,6 +59,10 @@ public class Track: NSObject, Loggable {
         case microphone
         case screenShareVideo
         case screenShareAudio
+
+        var isScreenShare: Bool {
+            return self == .screenShareAudio || self == .screenShareVideo
+        }
     }
 
     @objc(PublishState)
@@ -65,16 +71,21 @@ public class Track: NSObject, Loggable {
         case published
     }
 
-    // MARK: - Public properties
+    /// Only for ``LocalTrack``s.
+    internal private(set) var _publishState: PublishState = .unpublished
+
+    /// ``publishOptions`` used for this track if already published.
+    /// Only for ``LocalTrack``s.
+    internal var _publishOptions: PublishOptions?
 
     @objc
-    public var kind: Kind { _state.kind }
+    public let kind: Track.Kind
 
     @objc
-    public var source: Source { _state.source }
+    public let source: Track.Source
 
     @objc
-    public var name: String { _state.name }
+    public let name: String
 
     @objc
     public var sid: Sid? { _state.sid }
@@ -97,17 +108,6 @@ public class Track: NSObject, Loggable {
 
     // MARK: - Internal
 
-    internal var delegates = MulticastDelegate<TrackDelegate>()
-
-    internal let queue = DispatchQueue(label: "LiveKitSDK.track", qos: .default)
-
-    /// Only for ``LocalTrack``s.
-    internal private(set) var _publishState: PublishState = .unpublished
-
-    /// ``publishOptions`` used for this track if already published.
-    /// Only for ``LocalTrack``s.
-    internal var _publishOptions: PublishOptions?
-
     internal let mediaTrack: RTCMediaStreamTrack
     internal var transceiver: RTCRtpTransceiver?
     internal var sender: RTCRtpSender? { transceiver?.sender }
@@ -115,11 +115,7 @@ public class Track: NSObject, Loggable {
     // Weak reference to all VideoViews attached to this track. Must be accessed from main thread.
     internal var videoRenderers = NSHashTable<VideoRenderer>.weakObjects()
 
-    internal struct State: Equatable {
-        let name: String
-        let kind: Kind
-        let source: Source
-
+    internal struct State {
         var sid: Sid?
         var dimensions: Dimensions?
         var videoFrame: RTCVideoFrame?
@@ -128,16 +124,12 @@ public class Track: NSObject, Loggable {
         var stats: TrackStats?
     }
 
-    internal var _state: StateSync<State>
+    internal var _state = StateSync(State())
 
     internal init(name: String, kind: Kind, source: Source, track: RTCMediaStreamTrack) {
-
-        _state = StateSync(State(
-            name: name,
-            kind: kind,
-            source: source
-        ))
-
+        self.name = name
+        self.kind = kind
+        self.source = source
         mediaTrack = track
     }
 
@@ -383,6 +375,26 @@ extension Track {
 
         videoRenderers.remove(videoRenderer)
         videoTrack.remove(videoRenderer)
+    }
+}
+
+// MARK: - MulticastDelegate
+
+extension Track: MulticastDelegateProtocol {
+
+    @objc(addDelegate:)
+    public func add(delegate: TrackDelegate) {
+        delegates.add(delegate: delegate)
+    }
+
+    @objc(removeDelegate:)
+    public func remove(delegate: TrackDelegate) {
+        delegates.remove(delegate: delegate)
+    }
+
+    @objc
+    public func removeAllDelegates() {
+        delegates.removeAllDelegates()
     }
 }
 

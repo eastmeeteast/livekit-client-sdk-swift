@@ -17,7 +17,7 @@
 import Foundation
 import Promises
 
-internal struct Completer<Value: Equatable>: Loggable {
+internal struct Completer<Value>: Loggable {
 
     private var value: Value?
     private var fulfill: ((Value) -> Void)?
@@ -62,12 +62,5 @@ internal struct Completer<Value: Equatable>: Loggable {
         fulfill = nil
         reject = nil
         value = nil
-    }
-}
-
-extension Completer: Equatable {
-
-    static func == (lhs: Completer<Value>, rhs: Completer<Value>) -> Bool {
-        lhs.value == rhs.value
     }
 }

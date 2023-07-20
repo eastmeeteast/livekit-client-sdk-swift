@@ -31,9 +31,13 @@ public class RemoteTrackPublication: TrackPublication {
 
     public var subscriptionAllowed: Bool { _state.subscriptionAllowed }
     public var enabled: Bool { _state.trackSettings.enabled }
-    override public var muted: Bool { track?.muted ?? _state.metadataMuted }
+    override public var muted: Bool { track?.muted ?? metadataMuted }
 
     // MARK: - Private
+
+    // user's preference to subscribe or not
+    private var preferSubscribed: Bool?
+    private var metadataMuted: Bool = false
 
     // adaptiveStream
     // this must be on .main queue
@@ -62,7 +66,7 @@ public class RemoteTrackPublication: TrackPublication {
 
     public override var subscribed: Bool {
         if !subscriptionAllowed { return false }
-        return _state.preferSubscribed != false && super.subscribed
+        return preferSubscribed != false && super.subscribed
     }
 
     public var subscriptionState: SubscriptionState {
@@ -74,20 +78,20 @@ public class RemoteTrackPublication: TrackPublication {
     @discardableResult
     public func set(subscribed newValue: Bool) -> Promise<Void> {
 
-        guard _state.preferSubscribed != newValue else { return Promise(()) }
+        guard self.preferSubscribed != newValue else { return Promise(()) }
 
         guard let participant = participant else {
             log("Participant is nil", .warning)
             return Promise(EngineError.state(message: "Participant is nil"))
         }
 
-        _state.mutate { $0.preferSubscribed = newValue }
-
         return participant.room.engine.signalClient.sendUpdateSubscription(
             participantSid: participant.sid,
             trackSid: sid,
             subscribed: newValue
-        )
+        ).then(on: queue) {
+            self.preferSubscribed = newValue
+        }
     }
 
     /// Enable or disable server from sending down data for this track.
@@ -123,7 +127,7 @@ public class RemoteTrackPublication: TrackPublication {
     @discardableResult
     internal override func set(track newValue: Track?) -> Track? {
 
-        log("RemoteTrackPublication set track: \(String(describing: newValue))")
+        log("RemoteTrackPublication set track: \(String(describing: track))")
 
         let oldValue = super.set(track: newValue)
         if newValue != oldValue {
@@ -144,7 +148,7 @@ public class RemoteTrackPublication: TrackPublication {
 
                 // if new Track has been set to this RemoteTrackPublication,
                 // update the Track's muted state from the latest info.
-                newValue.set(muted: _state.metadataMuted,
+                newValue.set(muted: metadataMuted,
                              notify: false)
             }
 
@@ -190,15 +194,14 @@ internal extension RemoteTrackPublication {
 
     func set(metadataMuted newValue: Bool) {
 
-        guard _state.metadataMuted != newValue else { return }
+        guard self.metadataMuted != newValue else { return }
 
         guard let participant = participant else {
             log("Participant is nil", .warning)
             return
         }
 
-        _state.mutate { $0.metadataMuted = newValue }
-
+        self.metadataMuted = newValue
         // if track exists, track will emit the following events
         if track == nil {
             participant.delegates.notify(label: { "participant.didUpdate muted: \(newValue)" }) {
@@ -231,7 +234,8 @@ internal extension RemoteTrackPublication {
     // reset track settings
     func resetTrackSettings() {
         // track is initially disabled when adaptive stream is enabled
-        _state.mutate { $0.trackSettings = TrackSettings(enabled: !isAdaptiveStreamEnabled) }
+        let initiallyEnabled = !isAdaptiveStreamEnabled
+        _state.mutate { $0.trackSettings = TrackSettings(enabled: initiallyEnabled) }
     }
 
     // attempt to send track settings
@@ -244,7 +248,7 @@ internal extension RemoteTrackPublication {
 
         log("[adaptiveStream] sending \(newValue), sid: \(sid)")
 
-        let state = _state.copy()
+        let state = _state.readCopy()
 
         assert(!state.isSendingTrackSettings, "send(trackSettings:) called while previous send not completed")
 
@@ -359,7 +363,7 @@ extension RemoteTrackPublication {
 
         if let videoTrack = track?.mediaTrack as? RTCVideoTrack {
             log("VideoTrack.shouldReceive: \(enabled)")
-            DispatchQueue.webRTC.sync { videoTrack.shouldReceive = enabled }
+//            DispatchQueue.webRTC.sync { videoTrack.shouldReceive = enabled }
         }
 
         send(trackSettings: newSettings).catch(on: queue) { [weak self] error in
