@@ -25,7 +25,7 @@ internal struct TrackSettings: Equatable {
 
     init(enabled: Bool = false,
          dimensions: Dimensions = .zero,
-         videoQuality: VideoQuality = .low,
+         videoQuality: VideoQuality = .medium,
          preferredFPS: UInt = 0) {
 
         self.enabled = enabled

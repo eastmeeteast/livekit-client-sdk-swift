@@ -88,9 +88,7 @@ internal class Engine: MulticastDelegate<EngineDelegate> {
 
         // trigger events when state mutates
         self._state.onMutate = { [weak self] state, oldState in
-
             guard let self = self else { return }
-
             assert(!(state.connectionState == .reconnecting && state.reconnectMode == .none), "reconnectMode should not be .none")
 
             if (state.connectionState != oldState.connectionState) || (state.reconnectMode != oldState.reconnectMode) {
@@ -120,7 +118,6 @@ internal class Engine: MulticastDelegate<EngineDelegate> {
         }
 
         subscriberDC.onDataPacket = { [weak self] (dataPacket: Livekit_DataPacket) in
-
             guard let self = self else { return }
 
             switch dataPacket.value {
@@ -134,11 +131,11 @@ internal class Engine: MulticastDelegate<EngineDelegate> {
     deinit {
         log()
     }
-    
+
     func startRecordingToFile(_ filePath: String) {
         Engine.audioDevice.startRecordingToFile(filePath)
     }
-    
+
     func stopRecordingToFile() {
         Engine.audioDevice.stopRecordingToFile()
     }
@@ -808,12 +805,12 @@ private class VideoDecoderFactory: RTCDefaultVideoDecoderFactory {
     }
 }
 
-//private class VideoEncoderFactorySimulcast: RTCVideoEncoderFactorySimulcast {
+// private class VideoEncoderFactorySimulcast: RTCVideoEncoderFactorySimulcast {
 //
 //    override func supportedCodecs() -> [RTCVideoCodecInfo] {
 //        super.supportedCodecs().rewriteCodecsIfNeeded()
 //    }
-//}
+// }
 
 internal extension Engine {
 

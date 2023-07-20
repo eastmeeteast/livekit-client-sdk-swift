@@ -620,10 +620,6 @@ internal extension SignalClient {
         var shouldDisconnect = false
         let r = Livekit_SignalRequest.with {
             $0.simulate = Livekit_SimulateScenario.with {
-                if case .nodeFailure = scenario { $0.nodeFailure = true }
-                if case .migration = scenario { $0.migration = true }
-                if case .serverLeave = scenario { $0.serverLeave = true }
-                if case .speakerUpdate(let secs) = scenario { $0.speakerUpdate = Int32(secs) }
                 switch scenario {
                  case .nodeFailure: $0.nodeFailure = true
                  case .migration: $0.migration = true

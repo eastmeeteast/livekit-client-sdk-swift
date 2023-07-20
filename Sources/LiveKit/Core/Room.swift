@@ -190,11 +190,11 @@ public class Room: NSObject, Loggable {
     deinit {
         log()
     }
-    
+
     public func startRecordingToFile(_ filePath: String) {
         self.engine.startRecordingToFile(filePath)
     }
-    
+
     public func stopRecordingToFile() {
         self.engine.stopRecordingToFile()
     }

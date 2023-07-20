@@ -59,6 +59,10 @@ public class Track: NSObject, Loggable {
         case microphone
         case screenShareVideo
         case screenShareAudio
+
+        var isScreenShare: Bool {
+            return self == .screenShareAudio || self == .screenShareVideo
+        }
     }
 
     @objc(PublishState)

@@ -51,16 +51,16 @@ extension AudioSessionHandler {
             }
 
         }
-        let routeChangeNotificationSubscribtion = center.addObserver(forName: AVAudioSession.routeChangeNotification, object: audioSession, queue: nil) { [weak self] notification in
+        let routeChangeNotificationSubscribtion = center.addObserver(forName: AVAudioSession.routeChangeNotification, object: audioSession, queue: nil) { [weak self] _ in
             guard let self = self else { return }
             self.handleAudioRouteChange()
         }
 
-        let mediaServicesWereLostNotificationSubscribtion = center.addObserver(forName: AVAudioSession.mediaServicesWereLostNotification, object: audioSession, queue: nil) { [weak self] notification in
+        let mediaServicesWereLostNotificationSubscribtion = center.addObserver(forName: AVAudioSession.mediaServicesWereLostNotification, object: audioSession, queue: nil) { [weak self] _ in
             guard let self = self else { return }
             self.handleMediaServerWereLost()
         }
-        let mediaServicesWereResetNotificationSubscribtion = center.addObserver(forName: AVAudioSession.mediaServicesWereResetNotification, object: audioSession, queue: nil) { [weak self] notification in
+        let mediaServicesWereResetNotificationSubscribtion = center.addObserver(forName: AVAudioSession.mediaServicesWereResetNotification, object: audioSession, queue: nil) { [weak self] _ in
             guard let self = self else { return }
             self.handleMediaServerWereReset()
         }
@@ -75,4 +75,3 @@ extension AudioSessionHandler {
         }
     }
 }
-
