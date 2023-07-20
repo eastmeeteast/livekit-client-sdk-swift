@@ -101,13 +101,13 @@ final class AVAudioEngineRTCAudioDevice: NSObject {
         let bufferSize = AVAudioFrameCount(max(format0.sampleRate * 0.4, 1024))
 
         audioEngine.mainMixerNode.installTap(onBus: 0, bufferSize: bufferSize, format: format0) { [weak self] (buffer, _) in
-            guard let self = self else { return }
-            ExtAudioFileWriteAsync(self.outref!, bufferSize, buffer.audioBufferList)
+            guard let self = self, let outref = self.outref else { return }
+            ExtAudioFileWriteAsync(outref, bufferSize, buffer.audioBufferList)
         }
 
         audioEQ.installTap(onBus: 0, bufferSize: bufferSize, format: format1) { [weak self] (buffer, _) in
-            guard let self = self else { return }
-            ExtAudioFileWriteAsync(self.outrefMic!, bufferSize, buffer.audioBufferList)
+            guard let self = self, let outrefMic = self.outrefMic else { return }
+            ExtAudioFileWriteAsync(outrefMic, bufferSize, buffer.audioBufferList)
         }
     }
 
@@ -117,10 +117,15 @@ final class AVAudioEngineRTCAudioDevice: NSObject {
         audioEngine.mainMixerNode.removeTap(onBus: 0)
         audioEQ.removeTap(onBus: 0)
 
-        ExtAudioFileDispose(outref!)
-        ExtAudioFileDispose(outrefMic!)
-        outref = nil
-        outrefMic = nil
+        if let outref = outref {
+            ExtAudioFileDispose(outref)
+            self.outref = nil
+        }
+
+        if let outrefMic = outrefMic {
+            ExtAudioFileDispose(outrefMic)
+            self.outrefMic = nil
+        }
     }
 
     private func shutdownEngine() {
