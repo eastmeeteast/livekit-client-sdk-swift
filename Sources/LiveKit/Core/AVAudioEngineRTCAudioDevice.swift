@@ -154,7 +154,7 @@ final class AVAudioEngineRTCAudioDevice: NSObject {
         guard let delegate = delegate,
               shouldPlay || shouldRecord,
               !isInterrupted else {
-            print("Audio Engine must be stopped: shouldPla=\(shouldPlay), shouldRecord=\(shouldRecord), isInterrupted=\(isInterrupted)")
+            printDebug("Audio Engine must be stopped: shouldPla=\(shouldPlay), shouldRecord=\(shouldRecord), isInterrupted=\(isInterrupted)")
             measureTime(label: "Shutdown AVAudioEngine") {
                 self.shutdownEngine()
             }
@@ -163,7 +163,7 @@ final class AVAudioEngineRTCAudioDevice: NSObject {
 
         let useVoiceProcessingAudioUnit = audioSession.supportsVoiceProcessing
         if let audioEngine = audioEngine, audioEngine.outputNode.isVoiceProcessingEnabled != useVoiceProcessingAudioUnit {
-          print("Shutdown AVAudioEngine to toggle usage of Voice Processing I/O")
+            printDebug("Shutdown AVAudioEngine to toggle usage of Voice Processing I/O")
           shutdownEngine()
         }
 
@@ -180,7 +180,7 @@ final class AVAudioEngineRTCAudioDevice: NSObject {
                 // Use VPIO to as I/O audio unit.
                 try audioEngine.outputNode.setVoiceProcessingEnabled(useVoiceProcessingAudioUnit)
               } catch let e {
-                print("setVoiceProcessingEnabled error: \(e)")
+                  printDebug("setVoiceProcessingEnabled error: \(e)")
                 return
               }
             }
@@ -222,7 +222,7 @@ final class AVAudioEngineRTCAudioDevice: NSObject {
                     let deliverRecordedData = delegate.deliverRecordedData
                     let inputFormat = audioEngine.inputNode.outputFormat(forBus: 1)
                     guard inputFormat.isSampleRateAndChannelCountValid else {
-                        print("Invalid input format: \(inputFormat)")
+                        printDebug("Invalid input format: \(inputFormat)")
                         return
                     }
 
@@ -273,7 +273,7 @@ final class AVAudioEngineRTCAudioDevice: NSObject {
                 measureTime(label: "Add AVAudioSourceNode") {
                     let outputFormat = audioEngine.outputNode.outputFormat(forBus: 0)
                     guard outputFormat.isSampleRateAndChannelCountValid else {
-                        print("Invalid audio output format detected: \(outputFormat)")
+                        printDebug("Invalid audio output format detected: \(outputFormat)")
                         return
                     }
 
@@ -322,7 +322,7 @@ final class AVAudioEngineRTCAudioDevice: NSObject {
                 do {
                     try audioEngine.start()
                 } catch let e {
-                    print("Unable to start audio engine: \(e)")
+                    printDebug("Unable to start audio engine: \(e)")
                 }
             }
 

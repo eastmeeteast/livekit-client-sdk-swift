@@ -9,7 +9,7 @@ public final class SimpleAudioConverter {
 
   public init?(from: AVAudioFormat, to: AVAudioFormat) {
     guard from.sampleRate == to.sampleRate else {
-      print("Sample rate conversion is not possible")
+        printDebug("Sample rate conversion is not possible")
       return nil
     }
     guard noErr == AudioConverterNew(from.streamDescription, to.streamDescription, &audioConverter) else {

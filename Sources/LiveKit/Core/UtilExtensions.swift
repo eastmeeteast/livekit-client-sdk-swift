@@ -32,7 +32,7 @@ func measureTime<Result>(label: String = #function, block: () -> Result) -> Resu
     let result = block()
     let end = DispatchTime.now()
     let duration = start.distance(to: end)
-    print("Executed \(label) within \(duration.debugDescription)")
+    printDebug("Executed \(label) within \(duration.debugDescription)")
     return result
 }
 
@@ -41,7 +41,7 @@ func getBuffer(fileURL: URL) -> AVAudioPCMBuffer? {
     do {
         try file = AVAudioFile(forReading: fileURL)
     } catch {
-        print("Could not load file: \(error)")
+        printDebug("Could not load file: \(error)")
         return nil
     }
     file.framePosition = 0
@@ -54,7 +54,7 @@ func getBuffer(fileURL: URL) -> AVAudioPCMBuffer? {
     do {
         try file.read(into: buffer)
     } catch {
-        print("Could not load file into buffer: \(error)")
+        printDebug("Could not load file into buffer: \(error)")
         return nil
     }
     file.framePosition = 0
@@ -95,7 +95,7 @@ extension AVAudioSession {
 
 extension AVAudioEngine {
     func dumpState(label: String) {
-        print("\(label): \(self.debugDescription)")
+        printDebug("\(label): \(self.debugDescription)")
     }
 
     func isInputOutputSampleRatesNativeFor(audioSession: AVAudioSession) -> Bool {
@@ -115,10 +115,10 @@ extension AVAudioEngine {
 
 extension AUAudioUnit {
     func dumpState(label: String) {
-        print("\(label): audioUnit.inputBusses[0].format = \(self.inputBusses[0].format)")
-        print("\(label): audioUnit.inputBusses[1].format = \(self.inputBusses[1].format)")
-        print("\(label): audioUnit.outputBusses[0].format = \(self.outputBusses[0].format)")
-        print("\(label): audioUnit.outputBusses[1].format = \(self.outputBusses[1].format)")
+        printDebug("\(label): audioUnit.inputBusses[0].format = \(self.inputBusses[0].format)")
+        printDebug("\(label): audioUnit.inputBusses[1].format = \(self.inputBusses[1].format)")
+        printDebug("\(label): audioUnit.outputBusses[0].format = \(self.outputBusses[0].format)")
+        printDebug("\(label): audioUnit.outputBusses[1].format = \(self.outputBusses[1].format)")
     }
 }
 
@@ -126,4 +126,10 @@ extension AVAudioFormat {
     var isSampleRateAndChannelCountValid: Bool {
         !sampleRate.isZero && !sampleRate.isNaN && sampleRate.isFinite && channelCount > 0
     }
+}
+
+ func printDebug(_ items: Any...) {
+    #if DEBUG
+     items.forEach { print($0)}
+    #endif
 }
