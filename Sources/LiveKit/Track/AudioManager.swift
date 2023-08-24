@@ -141,9 +141,9 @@ public class AudioManager: Loggable {
             // prepare config
             let configuration = RTCAudioSessionConfiguration.webRTC()
             var categoryOptions: AVAudioSession.CategoryOptions = []
+            configuration.category = AVAudioSession.Category.playAndRecord.rawValue
 
             if newState.trackState == .remoteOnly && newState.preferSpeakerOutput {
-                configuration.category = AVAudioSession.Category.playAndRecord.rawValue
                 configuration.mode = self.hasMacCatalyst ? AVAudioSession.Mode.default.rawValue :  AVAudioSession.Mode.videoChat.rawValue
             } else if [.localOnly, .localAndRemote].contains(newState.trackState) ||
                         (newState.trackState == .remoteOnly && !newState.preferSpeakerOutput) {
@@ -158,10 +158,8 @@ public class AudioManager: Loggable {
                     configuration.mode = self.hasMacCatalyst ? AVAudioSession.Mode.default.rawValue :  AVAudioSession.Mode.voiceChat.rawValue
                 }
             } else {
-                configuration.category = AVAudioSession.Category.soloAmbient.rawValue
-                configuration.mode = AVAudioSession.Mode.default.rawValue
+                configuration.mode = self.hasMacCatalyst ? AVAudioSession.Mode.default.rawValue :  AVAudioSession.Mode.videoChat.rawValue
             }
-
             if #available(iOS 14.5, *) {
                 categoryOptions = [.defaultToSpeaker, .allowBluetooth, .mixWithOthers, .overrideMutedMicrophoneInterruption]
             } else {
@@ -176,7 +174,7 @@ public class AudioManager: Loggable {
                 setActive = true
             } else if newState.trackState == .none, oldState.trackState != .none {
                 // deactivate audio session when there are no more local/remote audio tracks
-                setActive = false
+                setActive = true
             }
 
             // configure session
