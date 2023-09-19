@@ -77,6 +77,10 @@ public protocol RoomDelegateObjC: AnyObject {
     @objc(room:participant:didUpdateMetadata:) optional
     func room(_ room: Room, participant: Participant, didUpdate metadata: String?)
 
+    /// Same with ``ParticipantDelegate/participant(_:didUpdateName:)``.
+    @objc(room:participant:didUpdateName:) optional
+    func room(_ room: Room, participant: Participant, didUpdateName: String)
+
     /// Same with ``ParticipantDelegate/participant(_:didUpdate:)-7zxk1``.
     @objc(room:participant:didUpdateConnectionQuality:) optional
     func room(_ room: Room, participant: Participant, didUpdate connectionQuality: ConnectionQuality)
@@ -114,8 +118,15 @@ public protocol RoomDelegateObjC: AnyObject {
 
     /// Same with ``ParticipantDelegate/participant(_:didReceive:)-2t55a``
     /// participant could be nil if data was sent by server api.
-    @objc(room:participant:didReceiveData:) optional
+    ///
+    /// Deprecated, use ``room(_:participant:didReceiveData:topic:)`` instead.
+    @objc(room:participant:didReceiveData:)
+    @available(*, deprecated, renamed: "room(_:participant:didReceiveData:topic:)")
+    optional
     func room(_ room: Room, participant: RemoteParticipant?, didReceive data: Data)
+
+    @objc(room:participant:didReceiveData:topic:) optional
+    func room(_ room: Room, participant: RemoteParticipant?, didReceiveData data: Data, topic: String)
 
     /// Same with ``ParticipantDelegate/localParticipant(_:didPublish:)-90j2m``.
     @objc(room:localParticipant:didPublishPublication:) optional
@@ -128,6 +139,10 @@ public protocol RoomDelegateObjC: AnyObject {
     /// Same with ``ParticipantDelegate/participant(_:didUpdate:permission:)``.
     @objc optional
     func room(_ room: Room, participant: RemoteParticipant, didUpdate publication: RemoteTrackPublication, permission allowed: Bool)
+
+    /// ``Room``'e2ee state has been updated.
+    @objc(room:publication:didUpdateE2EEState:) optional
+    func room(_ room: Room, publication: TrackPublication, didUpdateE2EEState: E2EEState)
 }
 
 public protocol RoomDelegate: RoomDelegateObjC {

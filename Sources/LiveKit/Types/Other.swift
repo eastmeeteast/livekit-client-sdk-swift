@@ -46,5 +46,4 @@ public enum SimulateScenario {
     case speakerUpdate(seconds: Int)
     case forceTCP
     case forceTLS
-
 }

@@ -51,10 +51,41 @@ public class CameraCapturer: VideoCapturer {
     @objc
     public var options: CameraCaptureOptions
 
+    public var isMultitaskingAccessSupported: Bool {
+        #if os(iOS) || os(tvOS)
+        if #available(iOS 16, *, tvOS 17, *) {
+            self.capturer.captureSession.beginConfiguration()
+            defer { self.capturer.captureSession.commitConfiguration() }
+            return self.capturer.captureSession.isMultitaskingCameraAccessSupported
+        }
+        #endif
+        return false
+    }
+
+    public var isMultitaskingAccessEnabled: Bool {
+        get {
+            #if os(iOS) || os(tvOS)
+            if #available(iOS 16, *, tvOS 17, *) {
+                return self.capturer.captureSession.isMultitaskingCameraAccessEnabled
+            }
+            #endif
+            return false
+        }
+        set {
+            #if os(iOS) || os(tvOS)
+            if #available(iOS 16, *, tvOS 17, *) {
+                self.capturer.captureSession.isMultitaskingCameraAccessEnabled = newValue
+            }
+            #endif
+        }
+    }
+
     init(delegate: RTCVideoCapturerDelegate, options: CameraCaptureOptions) {
         self.capturer = DispatchQueue.webRTC.sync { RTCCameraVideoCapturer(delegate: delegate) }
         self.options = options
         super.init(delegate: delegate)
+
+        log("isMultitaskingAccessSupported: \(isMultitaskingAccessSupported)", .info)
     }
 
     /// Switches the camera position between `.front` and `.back` if supported by the device.
@@ -107,22 +138,22 @@ public class CameraCapturer: VideoCapturer {
             let sortedFormats = formats.map({ (format: $0, dimensions: Dimensions(from: CMVideoFormatDescriptionGetDimensions($0.formatDescription))) })
                 .sorted { $0.dimensions.area < $1.dimensions.area }
 
-            // default to the smallest
-            var selectedFormat = sortedFormats.first
+            self.log("sortedFormats: \(sortedFormats.map { "(dimensions: \(String(describing: $0.dimensions)), fps: \(String(describing: $0.format.fpsRange())))" }), target dimensions: \(self.options.dimensions)")
 
-            // find preferred capture format if specified in options
+            // default to the largest supported dimensions (backup)
+            var selectedFormat = sortedFormats.last
+
             if let preferredFormat = self.options.preferredFormat,
                let foundFormat = sortedFormats.first(where: { $0.format == preferredFormat }) {
+                // Use the preferred capture format if specified in options
                 selectedFormat = foundFormat
             } else {
-                self.log("formats: \(sortedFormats.map { String(describing: $0.format.fpsRange()) }), target: \(self.options.dimensions)")
-
-                // find format that satisfies preferred dimensions & fps
-                selectedFormat = sortedFormats.first(where: { $0.dimensions.area >= self.options.dimensions.area && $0.format.fpsRange().contains(self.options.fps) })
-
-                // give up FPS if format still not found
-                if selectedFormat == nil {
-                    selectedFormat = sortedFormats.first(where: { $0.dimensions.area >= self.options.dimensions.area })
+                if let foundFormat = sortedFormats.first(where: { $0.dimensions.area >= self.options.dimensions.area && $0.format.fpsRange().contains(self.options.fps) }) {
+                    // Use the first format that satisfies preferred dimensions & fps
+                    selectedFormat = foundFormat
+                } else if let foundFormat = sortedFormats.first(where: { $0.dimensions.area >= self.options.dimensions.area }) {
+                    // Use the first format that satisfies preferred dimensions (without fps)
+                    selectedFormat = foundFormat
                 }
             }
 

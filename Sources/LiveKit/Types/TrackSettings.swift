@@ -16,7 +16,7 @@
 
 import Foundation
 
-internal struct TrackSettings: Equatable {
+internal struct TrackSettings: Equatable, Hashable {
 
     let enabled: Bool
     let dimensions: Dimensions
@@ -25,7 +25,7 @@ internal struct TrackSettings: Equatable {
 
     init(enabled: Bool = false,
          dimensions: Dimensions = .zero,
-         videoQuality: VideoQuality = .medium,
+         videoQuality: VideoQuality = .low,
          preferredFPS: UInt = 0) {
 
         self.enabled = enabled

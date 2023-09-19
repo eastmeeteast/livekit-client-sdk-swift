@@ -36,6 +36,9 @@ public class RoomOptions: NSObject {
     @objc
     public let defaultAudioPublishOptions: AudioPublishOptions
 
+    @objc
+    public let defaultDataPublishOptions: DataPublishOptions
+
     /// AdaptiveStream lets LiveKit automatically manage quality of subscribed
     /// video tracks to optimize for bandwidth and CPU.
     /// When attached video elements are visible, it'll choose an appropriate
@@ -56,7 +59,7 @@ public class RoomOptions: NSObject {
     @objc
     public let stopLocalTrackOnUnpublish: Bool
 
-    /// Automatically suspend(mute) video tracks when the app enters background and
+    /// Automatically suspend(mute) local camera video tracks when the app enters background and
     /// resume(unmute) when the app enters foreground again.
     @objc
     public let suspendLocalVideoTracksInBackground: Bool
@@ -67,27 +70,34 @@ public class RoomOptions: NSObject {
     @objc
     public let reportStats: Bool
 
+    /// E2EE Options
+    public let e2eeOptions: E2EEOptions?
+
     public init(defaultCameraCaptureOptions: CameraCaptureOptions = CameraCaptureOptions(),
                 defaultScreenShareCaptureOptions: ScreenShareCaptureOptions = ScreenShareCaptureOptions(),
                 defaultAudioCaptureOptions: AudioCaptureOptions = AudioCaptureOptions(),
                 defaultVideoPublishOptions: VideoPublishOptions = VideoPublishOptions(),
                 defaultAudioPublishOptions: AudioPublishOptions = AudioPublishOptions(),
+                defaultDataPublishOptions: DataPublishOptions = DataPublishOptions(),
                 adaptiveStream: Bool = false,
                 dynacast: Bool = false,
                 stopLocalTrackOnUnpublish: Bool = true,
                 suspendLocalVideoTracksInBackground: Bool = true,
-                reportStats: Bool = false) {
+                reportStats: Bool = false,
+                e2eeOptions: E2EEOptions? = nil) {
 
         self.defaultCameraCaptureOptions = defaultCameraCaptureOptions
         self.defaultScreenShareCaptureOptions = defaultScreenShareCaptureOptions
         self.defaultAudioCaptureOptions = defaultAudioCaptureOptions
         self.defaultVideoPublishOptions = defaultVideoPublishOptions
         self.defaultAudioPublishOptions = defaultAudioPublishOptions
+        self.defaultDataPublishOptions = defaultDataPublishOptions
         self.adaptiveStream = adaptiveStream
         self.dynacast = dynacast
         self.stopLocalTrackOnUnpublish = stopLocalTrackOnUnpublish
         self.suspendLocalVideoTracksInBackground = suspendLocalVideoTracksInBackground
         self.reportStats = reportStats
+        self.e2eeOptions = e2eeOptions
     }
 
     // MARK: - Equal
@@ -99,6 +109,7 @@ public class RoomOptions: NSObject {
             self.defaultAudioCaptureOptions == other.defaultAudioCaptureOptions &&
             self.defaultVideoPublishOptions == other.defaultVideoPublishOptions &&
             self.defaultAudioPublishOptions == other.defaultAudioPublishOptions &&
+            self.defaultDataPublishOptions == other.defaultDataPublishOptions &&
             self.adaptiveStream == other.adaptiveStream &&
             self.dynacast == other.dynacast &&
             self.stopLocalTrackOnUnpublish == other.stopLocalTrackOnUnpublish &&
@@ -113,6 +124,7 @@ public class RoomOptions: NSObject {
         hasher.combine(defaultAudioCaptureOptions)
         hasher.combine(defaultVideoPublishOptions)
         hasher.combine(defaultAudioPublishOptions)
+        hasher.combine(defaultDataPublishOptions)
         hasher.combine(adaptiveStream)
         hasher.combine(dynacast)
         hasher.combine(stopLocalTrackOnUnpublish)

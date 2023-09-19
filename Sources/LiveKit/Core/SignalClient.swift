@@ -28,7 +28,7 @@ internal class SignalClient: MulticastDelegate<SignalClientDelegate> {
 
     // MARK: - Internal
 
-    internal struct State: ReconnectableState {
+    internal struct State: ReconnectableState, Equatable {
         var reconnectMode: ReconnectMode?
         var connectionState: ConnectionState = .disconnected()
         var joinResponseCompleter = Completer<Livekit_JoinResponse>()
@@ -65,16 +65,16 @@ internal class SignalClient: MulticastDelegate<SignalClientDelegate> {
         log()
 
         // trigger events when state mutates
-        self._state.onMutate = { [weak self] state, oldState in
+        self._state.onDidMutate = { [weak self] newState, oldState in
 
             guard let self = self else { return }
 
             // connectionState did update
-            if state.connectionState != oldState.connectionState {
-                self.log("\(oldState.connectionState) -> \(state.connectionState)")
+            if newState.connectionState != oldState.connectionState {
+                self.log("\(oldState.connectionState) -> \(newState.connectionState)")
             }
 
-            self.notify { $0.signalClient(self, didMutate: state, oldState: oldState) }
+            self.notify { $0.signalClient(self, didMutate: newState, oldState: oldState) }
         }
     }
 
@@ -319,7 +319,7 @@ private extension SignalClient {
 
         case .trackPublished(let trackPublished):
             // not required to be handled because we use completer pattern for this case
-            notify(requiresHandle: false) { $0.signalClient(self, didPublish: trackPublished) }
+            notify { $0.signalClient(self, didPublish: trackPublished) }
 
             log("[publish] resolving completer for cid: \(trackPublished.cid)")
             // complete
@@ -355,6 +355,12 @@ private extension SignalClient {
             notify { $0.signalClient(self, didUpdate: token) }
         case .pong(let r):
             onReceivedPong(r)
+        case .reconnect:
+            log("received reconnect message")
+        case .pongResp:
+            log("received pongResp message")
+        case .subscriptionResponse:
+            log("received subscriptionResponse message")
         }
     }
 }
@@ -480,6 +486,7 @@ internal extension SignalClient {
                          name: String,
                          type: Livekit_TrackType,
                          source: Livekit_TrackSource = .unknown,
+                         encryption: Livekit_Encryption.TypeEnum = .none,
                          _ populator: AddTrackRequestPopulator<R>) -> Promise<AddTrackResult<R>> {
         log()
 
@@ -489,6 +496,7 @@ internal extension SignalClient {
                 $0.name = name
                 $0.type = type
                 $0.source = source
+                $0.encryption = encryption
             }
 
             let populateResult = try populator(&addTrackRequest)
@@ -578,6 +586,20 @@ internal extension SignalClient {
         return sendRequest(r)
     }
 
+    func sendUpdateLocalMetadata(_ metadata: String, name: String) -> Promise<Void> {
+
+        log()
+
+        let r = Livekit_SignalRequest.with {
+            $0.updateMetadata = Livekit_UpdateParticipantMetadata.with {
+                $0.metadata = metadata
+                $0.name = name
+            }
+        }
+
+        return sendRequest(r)
+    }
+
     func sendSyncState(answer: Livekit_SessionDescription,
                        offer: Livekit_SessionDescription?,
                        subscription: Livekit_UpdateSubscription,
@@ -617,24 +639,26 @@ internal extension SignalClient {
     @discardableResult
     func sendSimulate(scenario: SimulateScenario) -> Promise<Void> {
         log()
+
         var shouldDisconnect = false
+
         let r = Livekit_SignalRequest.with {
             $0.simulate = Livekit_SimulateScenario.with {
                 switch scenario {
-                 case .nodeFailure: $0.nodeFailure = true
-                 case .migration: $0.migration = true
-                 case .serverLeave: $0.serverLeave = true
-                 case .speakerUpdate(let secs): $0.speakerUpdate = Int32(secs)
-                 case .forceTCP:
-                     $0.switchCandidateProtocol = Livekit_CandidateProtocol.tcp
-                     shouldDisconnect = true
-                 case .forceTLS:
-                     $0.switchCandidateProtocol = Livekit_CandidateProtocol.tls
-                     shouldDisconnect = true
-                 }
-
+                case .nodeFailure: $0.nodeFailure = true
+                case .migration: $0.migration = true
+                case .serverLeave: $0.serverLeave = true
+                case .speakerUpdate(let secs): $0.speakerUpdate = Int32(secs)
+                case .forceTCP:
+                    $0.switchCandidateProtocol = Livekit_CandidateProtocol.tcp
+                    shouldDisconnect = true
+                case .forceTLS:
+                    $0.switchCandidateProtocol = Livekit_CandidateProtocol.tls
+                    shouldDisconnect = true
+                }
             }
         }
+
         return sendRequest(r).then(on: queue) {
             if shouldDisconnect {
                 let sdkError = NetworkError.disconnected(message: "Simulate scenario")
@@ -685,6 +709,7 @@ private extension SignalClient {
     }
 
     func onReceivedPong(_ r: Int64) {
+
         log("ping/pong received pong from server", .trace)
         // clear timeout timer
         pingTimeoutTimer = nil

@@ -7,6 +7,20 @@
 // For information on using the generated types, please see the documentation:
 //   https://github.com/apple/swift-protobuf/
 
+// Copyright 2023 LiveKit, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 import Foundation
 import SwiftProtobuf
 
@@ -221,8 +235,6 @@ struct Livekit_SignalRequest {
     set {message = .leave(newValue)}
   }
 
-  /// Set active published layers, deprecated in favor of automatic tracking
-  ///    SetSimulcastLayers simulcast = 9;
   /// Update published video layers
   var updateLayers: Livekit_UpdateVideoLayers {
     get {
@@ -268,6 +280,23 @@ struct Livekit_SignalRequest {
     set {message = .ping(newValue)}
   }
 
+  /// update a participant's own metadata and/or name
+  var updateMetadata: Livekit_UpdateParticipantMetadata {
+    get {
+      if case .updateMetadata(let v)? = message {return v}
+      return Livekit_UpdateParticipantMetadata()
+    }
+    set {message = .updateMetadata(newValue)}
+  }
+
+  var pingReq: Livekit_Ping {
+    get {
+      if case .pingReq(let v)? = message {return v}
+      return Livekit_Ping()
+    }
+    set {message = .pingReq(newValue)}
+  }
+
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
   enum OneOf_Message: Equatable {
@@ -285,8 +314,6 @@ struct Livekit_SignalRequest {
     case trackSetting(Livekit_UpdateTrackSettings)
     /// Immediately terminate session
     case leave(Livekit_LeaveRequest)
-    /// Set active published layers, deprecated in favor of automatic tracking
-    ///    SetSimulcastLayers simulcast = 9;
     /// Update published video layers
     case updateLayers(Livekit_UpdateVideoLayers)
     /// Update subscriber permissions
@@ -297,6 +324,9 @@ struct Livekit_SignalRequest {
     case simulate(Livekit_SimulateScenario)
     /// client triggered ping to server
     case ping(Int64)
+    /// update a participant's own metadata and/or name
+    case updateMetadata(Livekit_UpdateParticipantMetadata)
+    case pingReq(Livekit_Ping)
 
   #if !swift(>=4.1)
     static func ==(lhs: Livekit_SignalRequest.OneOf_Message, rhs: Livekit_SignalRequest.OneOf_Message) -> Bool {
@@ -354,6 +384,14 @@ struct Livekit_SignalRequest {
       }()
       case (.ping, .ping): return {
         guard case .ping(let l) = lhs, case .ping(let r) = rhs else { preconditionFailure() }
+        return l == r
+      }()
+      case (.updateMetadata, .updateMetadata): return {
+        guard case .updateMetadata(let l) = lhs, case .updateMetadata(let r) = rhs else { preconditionFailure() }
+        return l == r
+      }()
+      case (.pingReq, .pingReq): return {
+        guard case .pingReq(let l) = lhs, case .pingReq(let r) = rhs else { preconditionFailure() }
         return l == r
       }()
       default: return false
@@ -526,6 +564,33 @@ struct Livekit_SignalResponse {
     set {message = .pong(newValue)}
   }
 
+  /// sent when client reconnects
+  var reconnect: Livekit_ReconnectResponse {
+    get {
+      if case .reconnect(let v)? = message {return v}
+      return Livekit_ReconnectResponse()
+    }
+    set {message = .reconnect(newValue)}
+  }
+
+  /// respond to Ping
+  var pongResp: Livekit_Pong {
+    get {
+      if case .pongResp(let v)? = message {return v}
+      return Livekit_Pong()
+    }
+    set {message = .pongResp(newValue)}
+  }
+
+  /// Subscription response, client should not expect any media from this subscription if it fails
+  var subscriptionResponse: Livekit_SubscriptionResponse {
+    get {
+      if case .subscriptionResponse(let v)? = message {return v}
+      return Livekit_SubscriptionResponse()
+    }
+    set {message = .subscriptionResponse(newValue)}
+  }
+
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
   enum OneOf_Message: Equatable {
@@ -564,6 +629,12 @@ struct Livekit_SignalResponse {
     case trackUnpublished(Livekit_TrackUnpublishedResponse)
     /// respond to ping
     case pong(Int64)
+    /// sent when client reconnects
+    case reconnect(Livekit_ReconnectResponse)
+    /// respond to Ping
+    case pongResp(Livekit_Pong)
+    /// Subscription response, client should not expect any media from this subscription if it fails
+    case subscriptionResponse(Livekit_SubscriptionResponse)
 
   #if !swift(>=4.1)
     static func ==(lhs: Livekit_SignalResponse.OneOf_Message, rhs: Livekit_SignalResponse.OneOf_Message) -> Bool {
@@ -639,6 +710,18 @@ struct Livekit_SignalResponse {
         guard case .pong(let l) = lhs, case .pong(let r) = rhs else { preconditionFailure() }
         return l == r
       }()
+      case (.reconnect, .reconnect): return {
+        guard case .reconnect(let l) = lhs, case .reconnect(let r) = rhs else { preconditionFailure() }
+        return l == r
+      }()
+      case (.pongResp, .pongResp): return {
+        guard case .pongResp(let l) = lhs, case .pongResp(let r) = rhs else { preconditionFailure() }
+        return l == r
+      }()
+      case (.subscriptionResponse, .subscriptionResponse): return {
+        guard case .subscriptionResponse(let l) = lhs, case .subscriptionResponse(let r) = rhs else { preconditionFailure() }
+        return l == r
+      }()
       default: return false
       }
     }
@@ -656,8 +739,6 @@ struct Livekit_SimulcastCodec {
   var codec: String = String()
 
   var cid: String = String()
-
-  var enableSimulcastLayers: Bool = false
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -700,6 +781,12 @@ struct Livekit_AddTrackRequest {
 
   /// true if RED (Redundant Encoding) is disabled for audio
   var disableRed: Bool = false
+
+  var encryption: Livekit_Encryption.TypeEnum = .none
+
+  /// which stream the track belongs to, used to group tracks together.
+  /// if not specified, server will infer it from track source to bundle camera/microphone, screenshare/audio together
+  var stream: String = String()
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -820,11 +907,40 @@ struct Livekit_JoinResponse {
   /// Clears the value of `serverInfo`. Subsequent reads from it will return its default value.
   mutating func clearServerInfo() {_uniqueStorage()._serverInfo = nil}
 
+  /// Server-Injected-Frame byte trailer, used to identify unencrypted frames when e2ee is enabled
+  var sifTrailer: Data {
+    get {return _storage._sifTrailer}
+    set {_uniqueStorage()._sifTrailer = newValue}
+  }
+
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
   init() {}
 
   fileprivate var _storage = _StorageClass.defaultInstance
+}
+
+struct Livekit_ReconnectResponse {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  var iceServers: [Livekit_ICEServer] = []
+
+  var clientConfiguration: Livekit_ClientConfiguration {
+    get {return _clientConfiguration ?? Livekit_ClientConfiguration()}
+    set {_clientConfiguration = newValue}
+  }
+  /// Returns true if `clientConfiguration` has been explicitly set.
+  var hasClientConfiguration: Bool {return self._clientConfiguration != nil}
+  /// Clears the value of `clientConfiguration`. Subsequent reads from it will return its default value.
+  mutating func clearClientConfiguration() {self._clientConfiguration = nil}
+
+  var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  init() {}
+
+  fileprivate var _clientConfiguration: Livekit_ClientConfiguration? = nil
 }
 
 struct Livekit_TrackPublishedResponse {
@@ -926,6 +1042,15 @@ struct Livekit_UpdateTrackSettings {
 
   var fps: UInt32 = 0
 
+  /// subscription priority. 1 being the highest (0 is unset)
+  /// when unset, server sill assign priority based on the order of subscription
+  /// server will use priority in the following ways:
+  /// 1. when subscribed tracks exceed per-participant subscription limit, server will
+  ///    pause the lowest priority tracks
+  /// 2. when the network is congested, server will assign available bandwidth to
+  ///    higher priority tracks first. lowest priority tracks can be paused
+  var priority: UInt32 = 0
+
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
   init() {}
@@ -956,6 +1081,20 @@ struct Livekit_UpdateVideoLayers {
   var trackSid: String = String()
 
   var layers: [Livekit_VideoLayer] = []
+
+  var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  init() {}
+}
+
+struct Livekit_UpdateParticipantMetadata {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  var metadata: String = String()
+
+  var name: String = String()
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -1275,6 +1414,16 @@ struct Livekit_SimulateScenario {
     set {scenario = .switchCandidateProtocol(newValue)}
   }
 
+  /// maximum bandwidth for subscribers, in bps
+  /// when zero, clears artificial bandwidth limit
+  var subscriberBandwidth: Int64 {
+    get {
+      if case .subscriberBandwidth(let v)? = scenario {return v}
+      return 0
+    }
+    set {scenario = .subscriberBandwidth(newValue)}
+  }
+
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
   enum OneOf_Scenario: Equatable {
@@ -1288,6 +1437,9 @@ struct Livekit_SimulateScenario {
     case serverLeave(Bool)
     /// switch candidate protocol to tcp
     case switchCandidateProtocol(Livekit_CandidateProtocol)
+    /// maximum bandwidth for subscribers, in bps
+    /// when zero, clears artificial bandwidth limit
+    case subscriberBandwidth(Int64)
 
   #if !swift(>=4.1)
     static func ==(lhs: Livekit_SimulateScenario.OneOf_Scenario, rhs: Livekit_SimulateScenario.OneOf_Scenario) -> Bool {
@@ -1315,11 +1467,87 @@ struct Livekit_SimulateScenario {
         guard case .switchCandidateProtocol(let l) = lhs, case .switchCandidateProtocol(let r) = rhs else { preconditionFailure() }
         return l == r
       }()
+      case (.subscriberBandwidth, .subscriberBandwidth): return {
+        guard case .subscriberBandwidth(let l) = lhs, case .subscriberBandwidth(let r) = rhs else { preconditionFailure() }
+        return l == r
+      }()
       default: return false
       }
     }
   #endif
   }
+
+  init() {}
+}
+
+struct Livekit_Ping {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  var timestamp: Int64 = 0
+
+  /// rtt in milliseconds calculated by client
+  var rtt: Int64 = 0
+
+  var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  init() {}
+}
+
+struct Livekit_Pong {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// timestamp field of last received ping request
+  var lastPingTimestamp: Int64 = 0
+
+  var timestamp: Int64 = 0
+
+  var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  init() {}
+}
+
+struct Livekit_RegionSettings {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  var regions: [Livekit_RegionInfo] = []
+
+  var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  init() {}
+}
+
+struct Livekit_RegionInfo {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  var region: String = String()
+
+  var url: String = String()
+
+  var distance: Int64 = 0
+
+  var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  init() {}
+}
+
+struct Livekit_SubscriptionResponse {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  var trackSid: String = String()
+
+  var err: Livekit_SubscriptionError = .seUnknown
+
+  var unknownFields = SwiftProtobuf.UnknownStorage()
 
   init() {}
 }
@@ -1337,6 +1565,7 @@ extension Livekit_AddTrackRequest: @unchecked Sendable {}
 extension Livekit_TrickleRequest: @unchecked Sendable {}
 extension Livekit_MuteTrackRequest: @unchecked Sendable {}
 extension Livekit_JoinResponse: @unchecked Sendable {}
+extension Livekit_ReconnectResponse: @unchecked Sendable {}
 extension Livekit_TrackPublishedResponse: @unchecked Sendable {}
 extension Livekit_TrackUnpublishedResponse: @unchecked Sendable {}
 extension Livekit_SessionDescription: @unchecked Sendable {}
@@ -1345,6 +1574,7 @@ extension Livekit_UpdateSubscription: @unchecked Sendable {}
 extension Livekit_UpdateTrackSettings: @unchecked Sendable {}
 extension Livekit_LeaveRequest: @unchecked Sendable {}
 extension Livekit_UpdateVideoLayers: @unchecked Sendable {}
+extension Livekit_UpdateParticipantMetadata: @unchecked Sendable {}
 extension Livekit_ICEServer: @unchecked Sendable {}
 extension Livekit_SpeakersChanged: @unchecked Sendable {}
 extension Livekit_RoomUpdate: @unchecked Sendable {}
@@ -1362,6 +1592,11 @@ extension Livekit_SyncState: @unchecked Sendable {}
 extension Livekit_DataChannelInfo: @unchecked Sendable {}
 extension Livekit_SimulateScenario: @unchecked Sendable {}
 extension Livekit_SimulateScenario.OneOf_Scenario: @unchecked Sendable {}
+extension Livekit_Ping: @unchecked Sendable {}
+extension Livekit_Pong: @unchecked Sendable {}
+extension Livekit_RegionSettings: @unchecked Sendable {}
+extension Livekit_RegionInfo: @unchecked Sendable {}
+extension Livekit_SubscriptionResponse: @unchecked Sendable {}
 #endif  // swift(>=5.5) && canImport(_Concurrency)
 
 // MARK: - Code below here is support for the SwiftProtobuf runtime.
@@ -1406,6 +1641,8 @@ extension Livekit_SignalRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageIm
     12: .standard(proto: "sync_state"),
     13: .same(proto: "simulate"),
     14: .same(proto: "ping"),
+    15: .standard(proto: "update_metadata"),
+    16: .standard(proto: "ping_req"),
   ]
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
@@ -1578,6 +1815,32 @@ extension Livekit_SignalRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageIm
           self.message = .ping(v)
         }
       }()
+      case 15: try {
+        var v: Livekit_UpdateParticipantMetadata?
+        var hadOneofValue = false
+        if let current = self.message {
+          hadOneofValue = true
+          if case .updateMetadata(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.message = .updateMetadata(v)
+        }
+      }()
+      case 16: try {
+        var v: Livekit_Ping?
+        var hadOneofValue = false
+        if let current = self.message {
+          hadOneofValue = true
+          if case .pingReq(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.message = .pingReq(v)
+        }
+      }()
       default: break
       }
     }
@@ -1641,6 +1904,14 @@ extension Livekit_SignalRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageIm
       guard case .ping(let v)? = self.message else { preconditionFailure() }
       try visitor.visitSingularInt64Field(value: v, fieldNumber: 14)
     }()
+    case .updateMetadata?: try {
+      guard case .updateMetadata(let v)? = self.message else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 15)
+    }()
+    case .pingReq?: try {
+      guard case .pingReq(let v)? = self.message else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 16)
+    }()
     case nil: break
     }
     try unknownFields.traverse(visitor: &visitor)
@@ -1673,6 +1944,9 @@ extension Livekit_SignalResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageI
     16: .standard(proto: "refresh_token"),
     17: .standard(proto: "track_unpublished"),
     18: .same(proto: "pong"),
+    19: .same(proto: "reconnect"),
+    20: .standard(proto: "pong_resp"),
+    21: .standard(proto: "subscription_response"),
   ]
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
@@ -1892,6 +2166,45 @@ extension Livekit_SignalResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageI
           self.message = .pong(v)
         }
       }()
+      case 19: try {
+        var v: Livekit_ReconnectResponse?
+        var hadOneofValue = false
+        if let current = self.message {
+          hadOneofValue = true
+          if case .reconnect(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.message = .reconnect(v)
+        }
+      }()
+      case 20: try {
+        var v: Livekit_Pong?
+        var hadOneofValue = false
+        if let current = self.message {
+          hadOneofValue = true
+          if case .pongResp(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.message = .pongResp(v)
+        }
+      }()
+      case 21: try {
+        var v: Livekit_SubscriptionResponse?
+        var hadOneofValue = false
+        if let current = self.message {
+          hadOneofValue = true
+          if case .subscriptionResponse(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.message = .subscriptionResponse(v)
+        }
+      }()
       default: break
       }
     }
@@ -1971,6 +2284,18 @@ extension Livekit_SignalResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageI
       guard case .pong(let v)? = self.message else { preconditionFailure() }
       try visitor.visitSingularInt64Field(value: v, fieldNumber: 18)
     }()
+    case .reconnect?: try {
+      guard case .reconnect(let v)? = self.message else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 19)
+    }()
+    case .pongResp?: try {
+      guard case .pongResp(let v)? = self.message else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 20)
+    }()
+    case .subscriptionResponse?: try {
+      guard case .subscriptionResponse(let v)? = self.message else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 21)
+    }()
     case nil: break
     }
     try unknownFields.traverse(visitor: &visitor)
@@ -1988,7 +2313,6 @@ extension Livekit_SimulcastCodec: SwiftProtobuf.Message, SwiftProtobuf._MessageI
   static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
     1: .same(proto: "codec"),
     2: .same(proto: "cid"),
-    3: .standard(proto: "enable_simulcast_layers"),
   ]
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
@@ -1999,7 +2323,6 @@ extension Livekit_SimulcastCodec: SwiftProtobuf.Message, SwiftProtobuf._MessageI
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularStringField(value: &self.codec) }()
       case 2: try { try decoder.decodeSingularStringField(value: &self.cid) }()
-      case 3: try { try decoder.decodeSingularBoolField(value: &self.enableSimulcastLayers) }()
       default: break
       }
     }
@@ -2012,16 +2335,12 @@ extension Livekit_SimulcastCodec: SwiftProtobuf.Message, SwiftProtobuf._MessageI
     if !self.cid.isEmpty {
       try visitor.visitSingularStringField(value: self.cid, fieldNumber: 2)
     }
-    if self.enableSimulcastLayers != false {
-      try visitor.visitSingularBoolField(value: self.enableSimulcastLayers, fieldNumber: 3)
-    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   static func ==(lhs: Livekit_SimulcastCodec, rhs: Livekit_SimulcastCodec) -> Bool {
     if lhs.codec != rhs.codec {return false}
     if lhs.cid != rhs.cid {return false}
-    if lhs.enableSimulcastLayers != rhs.enableSimulcastLayers {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -2043,6 +2362,8 @@ extension Livekit_AddTrackRequest: SwiftProtobuf.Message, SwiftProtobuf._Message
     11: .same(proto: "sid"),
     12: .same(proto: "stereo"),
     13: .standard(proto: "disable_red"),
+    14: .same(proto: "encryption"),
+    15: .same(proto: "stream"),
   ]
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
@@ -2064,6 +2385,8 @@ extension Livekit_AddTrackRequest: SwiftProtobuf.Message, SwiftProtobuf._Message
       case 11: try { try decoder.decodeSingularStringField(value: &self.sid) }()
       case 12: try { try decoder.decodeSingularBoolField(value: &self.stereo) }()
       case 13: try { try decoder.decodeSingularBoolField(value: &self.disableRed) }()
+      case 14: try { try decoder.decodeSingularEnumField(value: &self.encryption) }()
+      case 15: try { try decoder.decodeSingularStringField(value: &self.stream) }()
       default: break
       }
     }
@@ -2109,6 +2432,12 @@ extension Livekit_AddTrackRequest: SwiftProtobuf.Message, SwiftProtobuf._Message
     if self.disableRed != false {
       try visitor.visitSingularBoolField(value: self.disableRed, fieldNumber: 13)
     }
+    if self.encryption != .none {
+      try visitor.visitSingularEnumField(value: self.encryption, fieldNumber: 14)
+    }
+    if !self.stream.isEmpty {
+      try visitor.visitSingularStringField(value: self.stream, fieldNumber: 15)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -2126,6 +2455,8 @@ extension Livekit_AddTrackRequest: SwiftProtobuf.Message, SwiftProtobuf._Message
     if lhs.sid != rhs.sid {return false}
     if lhs.stereo != rhs.stereo {return false}
     if lhs.disableRed != rhs.disableRed {return false}
+    if lhs.encryption != rhs.encryption {return false}
+    if lhs.stream != rhs.stream {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -2222,6 +2553,7 @@ extension Livekit_JoinResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImp
     10: .standard(proto: "ping_timeout"),
     11: .standard(proto: "ping_interval"),
     12: .standard(proto: "server_info"),
+    13: .standard(proto: "sif_trailer"),
   ]
 
   fileprivate class _StorageClass {
@@ -2237,6 +2569,7 @@ extension Livekit_JoinResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImp
     var _pingTimeout: Int32 = 0
     var _pingInterval: Int32 = 0
     var _serverInfo: Livekit_ServerInfo? = nil
+    var _sifTrailer: Data = Data()
 
     static let defaultInstance = _StorageClass()
 
@@ -2255,6 +2588,7 @@ extension Livekit_JoinResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImp
       _pingTimeout = source._pingTimeout
       _pingInterval = source._pingInterval
       _serverInfo = source._serverInfo
+      _sifTrailer = source._sifTrailer
     }
   }
 
@@ -2285,6 +2619,7 @@ extension Livekit_JoinResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImp
         case 10: try { try decoder.decodeSingularInt32Field(value: &_storage._pingTimeout) }()
         case 11: try { try decoder.decodeSingularInt32Field(value: &_storage._pingInterval) }()
         case 12: try { try decoder.decodeSingularMessageField(value: &_storage._serverInfo) }()
+        case 13: try { try decoder.decodeSingularBytesField(value: &_storage._sifTrailer) }()
         default: break
         }
       }
@@ -2333,6 +2668,9 @@ extension Livekit_JoinResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImp
       try { if let v = _storage._serverInfo {
         try visitor.visitSingularMessageField(value: v, fieldNumber: 12)
       } }()
+      if !_storage._sifTrailer.isEmpty {
+        try visitor.visitSingularBytesField(value: _storage._sifTrailer, fieldNumber: 13)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -2354,10 +2692,53 @@ extension Livekit_JoinResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImp
         if _storage._pingTimeout != rhs_storage._pingTimeout {return false}
         if _storage._pingInterval != rhs_storage._pingInterval {return false}
         if _storage._serverInfo != rhs_storage._serverInfo {return false}
+        if _storage._sifTrailer != rhs_storage._sifTrailer {return false}
         return true
       }
       if !storagesAreEqual {return false}
     }
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Livekit_ReconnectResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = _protobuf_package + ".ReconnectResponse"
+  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
+    1: .standard(proto: "ice_servers"),
+    2: .standard(proto: "client_configuration"),
+  ]
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeRepeatedMessageField(value: &self.iceServers) }()
+      case 2: try { try decoder.decodeSingularMessageField(value: &self._clientConfiguration) }()
+      default: break
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.iceServers.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.iceServers, fieldNumber: 1)
+    }
+    try { if let v = self._clientConfiguration {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: Livekit_ReconnectResponse, rhs: Livekit_ReconnectResponse) -> Bool {
+    if lhs.iceServers != rhs.iceServers {return false}
+    if lhs._clientConfiguration != rhs._clientConfiguration {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -2560,6 +2941,7 @@ extension Livekit_UpdateTrackSettings: SwiftProtobuf.Message, SwiftProtobuf._Mes
     5: .same(proto: "width"),
     6: .same(proto: "height"),
     7: .same(proto: "fps"),
+    8: .same(proto: "priority"),
   ]
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
@@ -2574,6 +2956,7 @@ extension Livekit_UpdateTrackSettings: SwiftProtobuf.Message, SwiftProtobuf._Mes
       case 5: try { try decoder.decodeSingularUInt32Field(value: &self.width) }()
       case 6: try { try decoder.decodeSingularUInt32Field(value: &self.height) }()
       case 7: try { try decoder.decodeSingularUInt32Field(value: &self.fps) }()
+      case 8: try { try decoder.decodeSingularUInt32Field(value: &self.priority) }()
       default: break
       }
     }
@@ -2598,6 +2981,9 @@ extension Livekit_UpdateTrackSettings: SwiftProtobuf.Message, SwiftProtobuf._Mes
     if self.fps != 0 {
       try visitor.visitSingularUInt32Field(value: self.fps, fieldNumber: 7)
     }
+    if self.priority != 0 {
+      try visitor.visitSingularUInt32Field(value: self.priority, fieldNumber: 8)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -2608,6 +2994,7 @@ extension Livekit_UpdateTrackSettings: SwiftProtobuf.Message, SwiftProtobuf._Mes
     if lhs.width != rhs.width {return false}
     if lhs.height != rhs.height {return false}
     if lhs.fps != rhs.fps {return false}
+    if lhs.priority != rhs.priority {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -2684,6 +3071,44 @@ extension Livekit_UpdateVideoLayers: SwiftProtobuf.Message, SwiftProtobuf._Messa
   static func ==(lhs: Livekit_UpdateVideoLayers, rhs: Livekit_UpdateVideoLayers) -> Bool {
     if lhs.trackSid != rhs.trackSid {return false}
     if lhs.layers != rhs.layers {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Livekit_UpdateParticipantMetadata: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = _protobuf_package + ".UpdateParticipantMetadata"
+  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
+    1: .same(proto: "metadata"),
+    2: .same(proto: "name"),
+  ]
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.metadata) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.name) }()
+      default: break
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.metadata.isEmpty {
+      try visitor.visitSingularStringField(value: self.metadata, fieldNumber: 1)
+    }
+    if !self.name.isEmpty {
+      try visitor.visitSingularStringField(value: self.name, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: Livekit_UpdateParticipantMetadata, rhs: Livekit_UpdateParticipantMetadata) -> Bool {
+    if lhs.metadata != rhs.metadata {return false}
+    if lhs.name != rhs.name {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -3317,6 +3742,7 @@ extension Livekit_SimulateScenario: SwiftProtobuf.Message, SwiftProtobuf._Messag
     3: .same(proto: "migration"),
     4: .standard(proto: "server_leave"),
     5: .standard(proto: "switch_candidate_protocol"),
+    6: .standard(proto: "subscriber_bandwidth"),
   ]
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
@@ -3365,6 +3791,14 @@ extension Livekit_SimulateScenario: SwiftProtobuf.Message, SwiftProtobuf._Messag
           self.scenario = .switchCandidateProtocol(v)
         }
       }()
+      case 6: try {
+        var v: Int64?
+        try decoder.decodeSingularInt64Field(value: &v)
+        if let v = v {
+          if self.scenario != nil {try decoder.handleConflictingOneOf()}
+          self.scenario = .subscriberBandwidth(v)
+        }
+      }()
       default: break
       }
     }
@@ -3396,6 +3830,10 @@ extension Livekit_SimulateScenario: SwiftProtobuf.Message, SwiftProtobuf._Messag
       guard case .switchCandidateProtocol(let v)? = self.scenario else { preconditionFailure() }
       try visitor.visitSingularEnumField(value: v, fieldNumber: 5)
     }()
+    case .subscriberBandwidth?: try {
+      guard case .subscriberBandwidth(let v)? = self.scenario else { preconditionFailure() }
+      try visitor.visitSingularInt64Field(value: v, fieldNumber: 6)
+    }()
     case nil: break
     }
     try unknownFields.traverse(visitor: &visitor)
@@ -3403,6 +3841,196 @@ extension Livekit_SimulateScenario: SwiftProtobuf.Message, SwiftProtobuf._Messag
 
   static func ==(lhs: Livekit_SimulateScenario, rhs: Livekit_SimulateScenario) -> Bool {
     if lhs.scenario != rhs.scenario {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Livekit_Ping: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = _protobuf_package + ".Ping"
+  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
+    1: .same(proto: "timestamp"),
+    2: .same(proto: "rtt"),
+  ]
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularInt64Field(value: &self.timestamp) }()
+      case 2: try { try decoder.decodeSingularInt64Field(value: &self.rtt) }()
+      default: break
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.timestamp != 0 {
+      try visitor.visitSingularInt64Field(value: self.timestamp, fieldNumber: 1)
+    }
+    if self.rtt != 0 {
+      try visitor.visitSingularInt64Field(value: self.rtt, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: Livekit_Ping, rhs: Livekit_Ping) -> Bool {
+    if lhs.timestamp != rhs.timestamp {return false}
+    if lhs.rtt != rhs.rtt {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Livekit_Pong: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = _protobuf_package + ".Pong"
+  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
+    1: .standard(proto: "last_ping_timestamp"),
+    2: .same(proto: "timestamp"),
+  ]
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularInt64Field(value: &self.lastPingTimestamp) }()
+      case 2: try { try decoder.decodeSingularInt64Field(value: &self.timestamp) }()
+      default: break
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.lastPingTimestamp != 0 {
+      try visitor.visitSingularInt64Field(value: self.lastPingTimestamp, fieldNumber: 1)
+    }
+    if self.timestamp != 0 {
+      try visitor.visitSingularInt64Field(value: self.timestamp, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: Livekit_Pong, rhs: Livekit_Pong) -> Bool {
+    if lhs.lastPingTimestamp != rhs.lastPingTimestamp {return false}
+    if lhs.timestamp != rhs.timestamp {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Livekit_RegionSettings: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = _protobuf_package + ".RegionSettings"
+  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
+    1: .same(proto: "regions"),
+  ]
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeRepeatedMessageField(value: &self.regions) }()
+      default: break
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.regions.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.regions, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: Livekit_RegionSettings, rhs: Livekit_RegionSettings) -> Bool {
+    if lhs.regions != rhs.regions {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Livekit_RegionInfo: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = _protobuf_package + ".RegionInfo"
+  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
+    1: .same(proto: "region"),
+    2: .same(proto: "url"),
+    3: .same(proto: "distance"),
+  ]
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.region) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.url) }()
+      case 3: try { try decoder.decodeSingularInt64Field(value: &self.distance) }()
+      default: break
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.region.isEmpty {
+      try visitor.visitSingularStringField(value: self.region, fieldNumber: 1)
+    }
+    if !self.url.isEmpty {
+      try visitor.visitSingularStringField(value: self.url, fieldNumber: 2)
+    }
+    if self.distance != 0 {
+      try visitor.visitSingularInt64Field(value: self.distance, fieldNumber: 3)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: Livekit_RegionInfo, rhs: Livekit_RegionInfo) -> Bool {
+    if lhs.region != rhs.region {return false}
+    if lhs.url != rhs.url {return false}
+    if lhs.distance != rhs.distance {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Livekit_SubscriptionResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = _protobuf_package + ".SubscriptionResponse"
+  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
+    1: .standard(proto: "track_sid"),
+    2: .same(proto: "err"),
+  ]
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.trackSid) }()
+      case 2: try { try decoder.decodeSingularEnumField(value: &self.err) }()
+      default: break
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.trackSid.isEmpty {
+      try visitor.visitSingularStringField(value: self.trackSid, fieldNumber: 1)
+    }
+    if self.err != .seUnknown {
+      try visitor.visitSingularEnumField(value: self.err, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: Livekit_SubscriptionResponse, rhs: Livekit_SubscriptionResponse) -> Bool {
+    if lhs.trackSid != rhs.trackSid {return false}
+    if lhs.err != rhs.err {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

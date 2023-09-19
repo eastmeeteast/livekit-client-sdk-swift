@@ -130,6 +130,6 @@ extension AVAudioFormat {
 
  func printDebug(_ items: Any...) {
     #if DEBUG
-     items.forEach { print($0)}
+     items.forEach { print("~## \($0)")}
     #endif
 }
