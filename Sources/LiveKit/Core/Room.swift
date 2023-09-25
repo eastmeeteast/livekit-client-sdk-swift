@@ -215,14 +215,6 @@ public class Room: NSObject, ObservableObject, Loggable {
         }
     }
 
-    public func startRecordingToFile(_ filePath: String) {
-        Engine.startRecordingToFile(filePath)
-    }
-
-    public func stopRecordingToFile() {
-        Engine.stopRecordingToFile()
-    }
-
     @discardableResult
     public func connect(_ url: String,
                         _ token: String,
