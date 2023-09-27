@@ -17,20 +17,21 @@
 import Foundation
 import CoreGraphics
 import Promises
+import Combine
 
 @objc
-public class TrackPublication: NSObject, TrackDelegate, Loggable {
+public class TrackPublication: NSObject, ObservableObject, Loggable {
 
-    internal let queue = DispatchQueue(label: "LiveKitSDK.publication", qos: .default)
-
-    @objc
-    public let sid: Sid
+    // MARK: - Public properties
 
     @objc
-    public let kind: Track.Kind
+    public var sid: Sid { _state.sid }
 
     @objc
-    public let source: Track.Source
+    public var kind: Track.Kind { _state.kind }
+
+    @objc
+    public var source: Track.Source { _state.source }
 
     @objc
     public var name: String { _state.name }
@@ -58,13 +59,22 @@ public class TrackPublication: NSObject, TrackDelegate, Loggable {
     @objc
     public var subscribed: Bool { _state.track != nil }
 
+    @objc
+    public var encryptionType: EncryptionType { _state.encryptionType }
+
     // MARK: - Internal
+
+    internal let queue = DispatchQueue(label: "LiveKitSDK.publication", qos: .default)
 
     /// Reference to the ``Participant`` this publication belongs to.
     internal weak var participant: Participant?
     internal private(set) var latestInfo: Livekit_TrackInfo?
 
-    internal struct State {
+    internal struct State: Equatable, Hashable {
+        let sid: Sid
+        let kind: Track.Kind
+        let source: Track.Source
+
         var track: Track?
         var name: String
         var mimeType: String
@@ -77,6 +87,12 @@ public class TrackPublication: NSObject, TrackDelegate, Loggable {
         var trackSettings = TrackSettings()
         //
         var isSendingTrackSettings: Bool = false
+
+        // Only for RemoteTrackPublications
+        // user's preference to subscribe or not
+        var preferSubscribed: Bool?
+        var metadataMuted: Bool = false
+        var encryptionType: EncryptionType = .none
     }
 
     internal var _state: StateSync<State>
@@ -85,15 +101,15 @@ public class TrackPublication: NSObject, TrackDelegate, Loggable {
                   track: Track? = nil,
                   participant: Participant) {
 
-        // initial state
         _state = StateSync(State(
+            sid: info.sid,
+            kind: info.type.toLKType(),
+            source: info.source.toLKType(),
             name: info.name,
-            mimeType: info.mimeType
+            mimeType: info.mimeType,
+            encryptionType: info.encryption.toLKType()
         ))
 
-        self.sid = info.sid
-        self.kind = info.type.toLKType()
-        self.source = info.source.toLKType()
         self.participant = participant
 
         super.init()
@@ -105,25 +121,42 @@ public class TrackPublication: NSObject, TrackDelegate, Loggable {
         track?.add(delegate: self)
 
         // trigger events when state mutates
-        self._state.onMutate = { [weak self] state, oldState in
+        self._state.onDidMutate = { [weak self] newState, oldState in
 
             guard let self = self else { return }
 
-            if state.streamState != oldState.streamState {
+            if newState.streamState != oldState.streamState {
                 if let participant = self.participant as? RemoteParticipant, let trackPublication = self as? RemoteTrackPublication {
-                    participant.delegates.notify(label: { "participant.didUpdate \(trackPublication) streamState: \(state.streamState)" }) {
-                        $0.participant?(participant, didUpdate: trackPublication, streamState: state.streamState)
+                    participant.delegates.notify(label: { "participant.didUpdate \(trackPublication) streamState: \(newState.streamState)" }) {
+                        $0.participant?(participant, didUpdate: trackPublication, streamState: newState.streamState)
                     }
-                    participant.room.delegates.notify(label: { "room.didUpdate \(trackPublication) streamState: \(state.streamState)" }) {
-                        $0.room?(participant.room, participant: participant, didUpdate: trackPublication, streamState: state.streamState)
+                    participant.room.delegates.notify(label: { "room.didUpdate \(trackPublication) streamState: \(newState.streamState)" }) {
+                        $0.room?(participant.room, participant: participant, didUpdate: trackPublication, streamState: newState.streamState)
                     }
                 }
             }
+
+            self.notifyObjectWillChange()
         }
     }
 
     deinit {
         log("sid: \(sid)")
+    }
+
+    internal func notifyObjectWillChange() {
+        // Notify UI that the object has changed
+        Task.detached { @MainActor in
+            // Notify TrackPublication
+            self.objectWillChange.send()
+
+            if let participant = self.participant {
+                // Notify Participant
+                participant.objectWillChange.send()
+                // Notify Room
+                participant.room.objectWillChange.send()
+            }
+        }
     }
 
     internal func updateFromInfo(info: Livekit_TrackInfo) {
@@ -161,8 +194,19 @@ public class TrackPublication: NSObject, TrackDelegate, Loggable {
 
         return oldValue
     }
+}
 
-    // MARK: - TrackDelegate
+// MARK: - TrackDelegate
+
+extension TrackPublication: TrackDelegateInternal {
+
+    func track(_ track: Track, didMutateState newState: Track.State, oldState: Track.State) {
+        // Notify on UI updating changes
+        if newState.muted != oldState.muted {
+            log("Track didMutateState newState: \(newState), oldState: \(oldState), kind: \(track.kind)")
+            notifyObjectWillChange()
+        }
+    }
 
     public func track(_ track: Track, didUpdate muted: Bool, shouldSendSignal: Bool) {
 
@@ -192,19 +236,11 @@ public class TrackPublication: NSObject, TrackDelegate, Loggable {
                 participant.room.delegates.notify {
                     $0.room?(participant.room, participant: participant, didUpdate: self, muted: self.muted)
                 }
+                // TrackPublication.muted is a computed property depending on Track.muted
+                // so emit event on TrackPublication when Track.muted updates
+                Task.detached { @MainActor in
+                    self.objectWillChange.send()
+                }
             }
-    }
-
-    // MARK: - Equal
-
-    public override func isEqual(_ object: Any?) -> Bool {
-        guard let other = object as? Self else { return false }
-        return self.sid == other.sid
-    }
-
-    public override var hash: Int {
-        var hasher = Hasher()
-        hasher.combine(sid)
-        return hasher.finalize()
     }
 }

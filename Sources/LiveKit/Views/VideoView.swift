@@ -18,20 +18,24 @@ import Foundation
 import WebRTC
 import MetalKit
 
+internal protocol Mirrorable {
+    func set(mirrored: Bool)
+}
+
 /// A ``NativeViewType`` that conforms to ``RTCVideoRenderer``.
-public typealias NativeRendererView = NativeViewType & RTCVideoRenderer
+internal typealias NativeRendererView = NativeViewType & RTCVideoRenderer & Mirrorable
 
 @objc
 public class VideoView: NativeView, Loggable {
 
-    // MARK: - Static
-
-    private static let mirrorTransform = CATransform3DMakeScale(-1.0, 1.0, 1.0)
-    private static let _freezeDetectThreshold = 2.0
-
     // MARK: - MulticastDelegate
 
-    private var delegates = MulticastDelegate<VideoViewDelegate>()
+    internal var delegates = MulticastDelegate<VideoViewDelegate>()
+
+    // MARK: - Static
+
+    internal static let mirrorTransform = CATransform3DMakeScale(-1.0, 1.0, 1.0)
+    private static let _freezeDetectThreshold = 2.0
 
     /// Specifies how to render the video withing the ``VideoView``'s bounds.
     @objc
@@ -50,6 +54,21 @@ public class VideoView: NativeView, Loggable {
         case mirror
     }
 
+    @objc
+    public enum RenderMode: Int, Codable, CustomStringConvertible {
+        case auto
+        case metal
+        case sampleBuffer
+
+        public var description: String {
+            switch self {
+            case .auto: return ".auto"
+            case .metal: return ".metal"
+            case .sampleBuffer: return ".sampleBuffer"
+            }
+        }
+    }
+
     /// ``LayoutMode-swift.enum`` of the ``VideoView``.
     @objc
     public var layoutMode: LayoutMode {
@@ -64,6 +83,12 @@ public class VideoView: NativeView, Loggable {
         set { _state.mutate { $0.mirrorMode = newValue } }
     }
 
+    @objc
+    public var renderMode: RenderMode {
+        get { _state.renderMode }
+        set { _state.mutate { $0.renderMode = newValue } }
+    }
+
     /// Force video to be rotated to preferred ``VideoRotation``.
     public var rotationOverride: VideoRotation? {
         get { _state.rotationOverride }
@@ -73,11 +98,11 @@ public class VideoView: NativeView, Loggable {
     /// Calls addRenderer and/or removeRenderer internally for convenience.
     @objc
     public weak var track: VideoTrack? {
-        get { _state.track }
+        get { _state.track as? VideoTrack }
         set {
             _state.mutate {
                 // reset states if track updated
-                if !Self.track($0.track, isEqualWith: newValue) {
+                if !Self.track($0.track as? VideoTrack, isEqualWith: newValue) {
                     $0.renderDate = nil
                     $0.didRenderFirstFrame = false
                     $0.isRendering = false
@@ -118,11 +143,19 @@ public class VideoView: NativeView, Loggable {
     @objc
     public var didRenderFirstFrame: Bool { _state.didRenderFirstFrame }
 
+    /// Access the internal AVSampleBufferDisplayLayer used for rendering.
+    /// This is only available when the renderer is using AVSampleBufferDisplayLayer.
+    /// Recommended to be accessed from main thread.
+    public var avSampleBufferDisplayLayer: AVSampleBufferDisplayLayer? {
+        guard let nr = nativeRenderer as? InternalSampleBufferVideoRenderer else { return nil }
+        return nr.sampleBufferDisplayLayer
+    }
+
     // MARK: - Internal
 
-    internal struct State {
+    internal struct State: Equatable {
 
-        weak var track: VideoTrack?
+        weak var track: Track?
         var isEnabled: Bool = true
         var isHidden: Bool = false
 
@@ -132,6 +165,7 @@ public class VideoView: NativeView, Loggable {
         var didLayout: Bool = false
         var layoutMode: LayoutMode = .fill
         var mirrorMode: MirrorMode = .auto
+        var renderMode: RenderMode = .auto
         var rotationOverride: VideoRotation?
 
         var debugMode: Bool = false
@@ -176,91 +210,102 @@ public class VideoView: NativeView, Loggable {
         #endif
 
         // trigger events when state mutates
-        _state.onMutate = { [weak self] state, oldState in
+        _state.onDidMutate = { [weak self] newState, oldState in
 
             guard let self = self else { return }
 
-            let shouldRenderDidUpdate = state.shouldRender != oldState.shouldRender
+            let shouldRenderDidUpdate = newState.shouldRender != oldState.shouldRender
+            let renderModeDidUpdate = newState.renderMode != oldState.renderMode
 
             // track was swapped
-            let trackDidUpdate = !Self.track(oldState.track, isEqualWith: state.track)
+            let trackDidUpdate = !Self.track(oldState.track as? VideoTrack, isEqualWith: newState.track as? VideoTrack)
 
-            if trackDidUpdate || shouldRenderDidUpdate {
+            // Enter .main only if the following conditions are met...
+            if trackDidUpdate || shouldRenderDidUpdate || renderModeDidUpdate {
 
                 Task.detached { @MainActor in
 
-                    // clean up old track
-                    if let track = oldState.track {
+                    var didReCreateNativeRenderer = false
 
-                        track.remove(videoRenderer: self)
+                    if trackDidUpdate || shouldRenderDidUpdate {
 
-                        if let nr = self.nativeRenderer {
-                            self.log("removing nativeRenderer")
-                            nr.removeFromSuperview()
-                            self.nativeRenderer = nil
+                        // clean up old track
+                        if let track = oldState.track as? VideoTrack {
+
+                            track.remove(videoRenderer: self)
+
+                            if let nr = self.nativeRenderer {
+                                self.log("removing nativeRenderer")
+                                nr.removeFromSuperview()
+                                self.nativeRenderer = nil
+                            }
+
+                            // CapturerDelegate
+                            if let localTrack = track as? LocalVideoTrack {
+                                localTrack.capturer.remove(delegate: self)
+                            }
+
+                            // notify detach
+                            track.delegates.notify(label: { "track.didDetach videoView: \(self)" }) { [weak self, weak track] (delegate) -> Void in
+                                guard let self = self, let track = track else { return }
+                                delegate.track?(track, didDetach: self)
+                            }
                         }
 
-                        // CapturerDelegate
-                        if let localTrack = track as? LocalVideoTrack {
-                            localTrack.capturer.remove(delegate: self)
-                        }
+                        // set new track
+                        if let track = newState.track as? VideoTrack, newState.shouldRender {
 
-                        // notify detach
-                        track.delegates.notify(label: { "track.didDetach videoView: \(self)" }) { [weak self, weak track] (delegate) -> Void in
-                            guard let self = self, let track = track else { return }
-                            delegate.track?(track, didDetach: self)
+                            // re-create renderer on main thread
+                            let nr = self.reCreateNativeRenderer()
+                            didReCreateNativeRenderer = true
+
+                            track.add(videoRenderer: self)
+
+                            if let frame = track._state.videoFrame {
+                                self.log("rendering cached frame tack: \(track._state.sid ?? "nil")")
+                                nr.renderFrame(frame)
+                                self.setNeedsLayout()
+                            }
+
+                            // CapturerDelegate
+                            if let localTrack = track as? LocalVideoTrack {
+                                localTrack.capturer.add(delegate: self)
+                            }
+
+                            // notify attach
+                            track.delegates.notify(label: { "track.didAttach videoView: \(self)" }) { [weak self, weak track] (delegate) -> Void in
+                                guard let self = self, let track = track else { return }
+                                delegate.track?(track, didAttach: self)
+                            }
                         }
                     }
 
-                    // set new track
-                    if let track = state.track, state.shouldRender {
-
-                        // re-create renderer on main thread
-                        let nr = self.reCreateNativeRenderer()
-
-                        track.add(videoRenderer: self)
-
-                        if let frame = track._state.videoFrame {
-                            self.log("rendering cached frame tack: \(track._state.sid ?? "nil")")
-                            nr.renderFrame(frame)
-                            self.setNeedsLayout()
-                        }
-
-                        // CapturerDelegate
-                        if let localTrack = track as? LocalVideoTrack {
-                            localTrack.capturer.add(delegate: self)
-                        }
-
-                        // notify attach
-                        track.delegates.notify(label: { "track.didAttach videoView: \(self)" }) { [weak self, weak track] (delegate) -> Void in
-                            guard let self = self, let track = track else { return }
-                            delegate.track?(track, didAttach: self)
-                        }
+                    if renderModeDidUpdate, !didReCreateNativeRenderer {
+                        self.reCreateNativeRenderer()
                     }
                 }
-
             }
 
             // isRendering updated
-            if state.isRendering != oldState.isRendering {
+            if newState.isRendering != oldState.isRendering {
 
-                self.log("isRendering \(oldState.isRendering) -> \(state.isRendering)")
+                self.log("isRendering \(oldState.isRendering) -> \(newState.isRendering)")
 
-                if state.isRendering {
+                if newState.isRendering {
                     self._renderTimer.restart()
                 } else {
                     self._renderTimer.suspend()
                 }
 
-                self.delegates.notify(label: { "videoView.didUpdate isRendering: \(state.isRendering)" }) {
-                    $0.videoView?(self, didUpdate: state.isRendering)
+                self.delegates.notify(label: { "videoView.didUpdate isRendering: \(newState.isRendering)" }) {
+                    $0.videoView?(self, didUpdate: newState.isRendering)
                 }
             }
 
             // viewSize updated
-            if state.viewSize != oldState.viewSize {
-                self.delegates.notify(label: { "videoView.didUpdate viewSize: \(state.viewSize)" }) {
-                    $0.videoView?(self, didUpdate: state.viewSize)
+            if newState.viewSize != oldState.viewSize {
+                self.delegates.notify(label: { "videoView.didUpdate viewSize: \(newState.viewSize)" }) {
+                    $0.videoView?(self, didUpdate: newState.viewSize)
                 }
             }
 
@@ -270,11 +315,12 @@ public class VideoView: NativeView, Loggable {
             // nativeRenderer.asMetalView?.isPaused = !shouldAttach
 
             // layout is required if any of the following vars mutate
-            if state.debugMode != oldState.debugMode ||
-                state.layoutMode != oldState.layoutMode ||
-                state.mirrorMode != oldState.mirrorMode ||
-                state.rotationOverride != oldState.rotationOverride ||
-                state.didRenderFirstFrame != oldState.didRenderFirstFrame ||
+            if newState.debugMode != oldState.debugMode ||
+                newState.layoutMode != oldState.layoutMode ||
+                newState.mirrorMode != oldState.mirrorMode ||
+                newState.renderMode != oldState.renderMode ||
+                newState.rotationOverride != oldState.rotationOverride ||
+                newState.didRenderFirstFrame != oldState.didRenderFirstFrame ||
                 shouldRenderDidUpdate || trackDidUpdate {
 
                 // must be on main
@@ -283,9 +329,9 @@ public class VideoView: NativeView, Loggable {
                 }
             }
 
-            if state.debugMode != oldState.debugMode {
+            if newState.debugMode != oldState.debugMode {
                 // fps timer
-                if state.debugMode {
+                if newState.debugMode {
                     self._fpsTimer.restart()
                 } else {
                     self._fpsTimer.suspend()
@@ -330,7 +376,7 @@ public class VideoView: NativeView, Loggable {
         // should always be on main thread
         assert(Thread.current.isMainThread, "must be called on main thread")
 
-        let state = _state.readCopy()
+        let state = _state.copy()
 
         defer {
             let viewSize = frame.size
@@ -349,9 +395,10 @@ public class VideoView: NativeView, Loggable {
             let _dimensions = state.track?.dimensions ?? .zero
             let _didRenderFirstFrame = state.didRenderFirstFrame ? "true" : "false"
             let _isRendering = state.isRendering ? "true" : "false"
+            let _renderMode = String(describing: state.renderMode)
             let _viewCount = state.track?.videoRenderers.allObjects.count ?? 0
             let debugView = ensureDebugTextView()
-            debugView.text = "#\(hashValue)\n" + "\(_trackSid)\n" + "\(_dimensions.width)x\(_dimensions.height)\n" + "enabled: \(isEnabled)\n" + "firstFrame: \(_didRenderFirstFrame)\n" + "isRendering: \(_isRendering)\n" + "viewCount: \(_viewCount)\n" + "FPS: \(_currentFPS)\n"
+            debugView.text = "#\(hashValue)\n" + "\(_trackSid)\n" + "\(_dimensions.width)x\(_dimensions.height)\n" + "enabled: \(isEnabled)\n" + "firstFrame: \(_didRenderFirstFrame)\n" + "isRendering: \(_isRendering)\n" + "renderMode: \(_renderMode)\n" + "viewCount: \(_viewCount)\n" + "FPS: \(_currentFPS)\n"
             debugView.frame = bounds
             #if os(iOS)
             debugView.layer.borderColor = (state.shouldRender ? UIColor.green : UIColor.red).withAlphaComponent(0.5).cgColor
@@ -417,22 +464,7 @@ public class VideoView: NativeView, Loggable {
             }
         }
 
-        if shouldMirror() {
-            #if os(macOS)
-            // this is required for macOS
-            nativeRenderer.wantsLayer = true
-            nativeRenderer.set(anchorPoint: CGPoint(x: 0.5, y: 0.5))
-            nativeRenderer.layer!.sublayerTransform = VideoView.mirrorTransform
-            #elseif os(iOS)
-            nativeRenderer.layer.transform = VideoView.mirrorTransform
-            #endif
-        } else {
-            #if os(macOS)
-            nativeRenderer.layer?.sublayerTransform = CATransform3DIdentity
-            #elseif os(iOS)
-            nativeRenderer.layer.transform = CATransform3DIdentity
-            #endif
-        }
+        nativeRenderer.set(mirrored: shouldMirror())
     }
 }
 
@@ -448,12 +480,13 @@ private extension VideoView {
         return view
     }
 
+    @discardableResult
     func reCreateNativeRenderer() -> NativeRendererView {
         // should always be on main thread
         assert(Thread.current.isMainThread, "must be called on main thread")
 
         // create a new rendererView
-        let newView = VideoView.createNativeRendererView()
+        let newView = VideoView.createNativeRendererView(for: _state.renderMode)
         addSubview(newView)
 
         // keep the old rendererView
@@ -507,7 +540,7 @@ extension VideoView: VideoRenderer {
 
     public func renderFrame(_ frame: RTCVideoFrame?) {
 
-        let state = _state.readCopy()
+        let state = _state.copy()
 
         // prevent any extra rendering if already !isEnabled etc.
         guard state.shouldRender, let nr = nativeRenderer else {
@@ -594,26 +627,6 @@ internal extension VideoView {
     }
 }
 
-// MARK: - MulticastDelegate
-
-extension VideoView: MulticastDelegateProtocol {
-
-    @objc(addDelegate:)
-    public func add(delegate: VideoViewDelegate) {
-        delegates.add(delegate: delegate)
-    }
-
-    @objc(removeDelegate:)
-    public func remove(delegate: VideoViewDelegate) {
-        delegates.remove(delegate: delegate)
-    }
-
-    @objc
-    public func removeAllDelegates() {
-        delegates.removeAllDelegates()
-    }
-}
-
 // MARK: - Static helper methods
 
 extension VideoView {
@@ -627,29 +640,34 @@ extension VideoView {
         #endif
     }
 
-    internal static func createNativeRendererView() -> NativeRendererView {
-        logger.log("Using RTCMTLVideoView for VideoView's Renderer", type: VideoView.self)
-        let result = RTCMTLVideoView()
+    internal static func createNativeRendererView(for renderMode: VideoView.RenderMode) -> NativeRendererView {
+        if case .sampleBuffer = renderMode {
+            logger.log("Using AVSampleBufferDisplayLayer for VideoView's Renderer", type: VideoView.self)
+            return InternalSampleBufferVideoRenderer()
+        } else {
+            logger.log("Using RTCMTLVideoView for VideoView's Renderer", type: VideoView.self)
+            let result = RTCMTLVideoView()
 
-        #if os(iOS)
-        result.contentMode = .scaleAspectFit
-        result.videoContentMode = .scaleAspectFit
-        #endif
-
-        // extra checks for MTKView
-        if let mtkView = result.findMTKView() {
             #if os(iOS)
-            mtkView.contentMode = .scaleAspectFit
-            #elseif os(macOS)
-            mtkView.layerContentsPlacement = .scaleProportionallyToFit
+            result.contentMode = .scaleAspectFit
+            result.videoContentMode = .scaleAspectFit
             #endif
-            // ensure it's capable of rendering 60fps
-            // https://developer.apple.com/documentation/metalkit/mtkview/1536027-preferredframespersecond
-            logger.log("preferredFramesPerSecond = 60", type: VideoView.self)
-            mtkView.preferredFramesPerSecond = 60
-        }
 
-        return result
+            // extra checks for MTKView
+            if let mtkView = result.findMTKView() {
+                #if os(iOS)
+                mtkView.contentMode = .scaleAspectFit
+                #elseif os(macOS)
+                mtkView.layerContentsPlacement = .scaleProportionallyToFit
+                #endif
+                // ensure it's capable of rendering 60fps
+                // https://developer.apple.com/documentation/metalkit/mtkview/1536027-preferredframespersecond
+                logger.log("preferredFramesPerSecond = 60", type: VideoView.self)
+                mtkView.preferredFramesPerSecond = 60
+            }
+
+            return result
+        }
     }
 }
 
@@ -692,3 +710,26 @@ extension NSView {
     }
 }
 #endif
+
+extension RTCMTLVideoView: Mirrorable {
+
+    internal func set(mirrored: Bool) {
+
+        if mirrored {
+            #if os(macOS)
+            // This is required for macOS
+            wantsLayer = true
+            set(anchorPoint: CGPoint(x: 0.5, y: 0.5))
+            layer!.sublayerTransform = VideoView.mirrorTransform
+            #elseif os(iOS)
+            layer.transform = VideoView.mirrorTransform
+            #endif
+        } else {
+            #if os(macOS)
+            layer?.sublayerTransform = CATransform3DIdentity
+            #elseif os(iOS)
+            layer.transform = CATransform3DIdentity
+            #endif
+        }
+    }
+}

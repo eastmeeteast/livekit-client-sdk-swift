@@ -42,8 +42,7 @@ public class BufferCapturer: VideoCapturer {
     /// Capture a ``CMSampleBuffer``.
     public func capture(_ sampleBuffer: CMSampleBuffer) {
 
-        delegate?.capturer(capturer, didCapture: sampleBuffer) { [weak self]  sourceDimensions in
-            guard let self = self else { return }
+        delegate?.capturer(capturer, didCapture: sampleBuffer) { sourceDimensions in
 
             let targetDimensions = sourceDimensions
                 .aspectFit(size: self.options.dimensions.max)
@@ -66,8 +65,8 @@ public class BufferCapturer: VideoCapturer {
         delegate?.capturer(capturer,
                            didCapture: pixelBuffer,
                            timeStampNs: timeStampNs,
-                           rotation: rotation) { [weak self] sourceDimensions in
-            guard let self = self else { return }
+                           rotation: rotation) { sourceDimensions in
+
             let targetDimensions = sourceDimensions
                 .aspectFit(size: self.options.dimensions.max)
                 .toEncodeSafeDimensions()
@@ -88,7 +87,7 @@ extension LocalVideoTrack {
     public static func createBufferTrack(name: String = Track.screenShareVideoName,
                                          source: VideoTrack.Source = .screenShareVideo,
                                          options: BufferCaptureOptions = BufferCaptureOptions()) -> LocalVideoTrack {
-        let videoSource = Engine.createVideoSource(forScreenShare: source.isScreenShare)
+        let videoSource = Engine.createVideoSource(forScreenShare: source == .screenShareVideo)
         let capturer = BufferCapturer(delegate: videoSource, options: options)
         return LocalVideoTrack(
             name: name,

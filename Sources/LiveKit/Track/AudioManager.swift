@@ -29,7 +29,10 @@ public class AudioManager: Loggable {
 
     /// Use this to provide a custom func to configure the audio session instead of ``defaultConfigureAudioSessionFunc(newState:oldState:)``.
     /// This method should not block and is expected to return immediately.
-    public var customConfigureAudioSessionFunc: ConfigureAudioSessionFunc?
+    public var customConfigureAudioSessionFunc: ConfigureAudioSessionFunc? {
+        get { _state.customConfigureFunc }
+        set { _state.mutate { $0.customConfigureFunc = newValue } }
+    }
 
     public enum TrackState {
         case none
@@ -38,10 +41,21 @@ public class AudioManager: Loggable {
         case localAndRemote
     }
 
-    public struct State {
-        var localTracksCount: Int = 0
-        var remoteTracksCount: Int = 0
-        var preferSpeakerOutput: Bool = true
+    public struct State: Equatable {
+
+        // Only consider State mutated when public vars change
+        public static func == (lhs: AudioManager.State, rhs: AudioManager.State) -> Bool {
+            lhs.localTracksCount == rhs.localTracksCount &&
+                lhs.remoteTracksCount == rhs.remoteTracksCount &&
+                lhs.preferSpeakerOutput == rhs.preferSpeakerOutput
+        }
+
+        // Keep this var within State so it's protected by UnfairLock
+        internal var customConfigureFunc: ConfigureAudioSessionFunc?
+
+        public var localTracksCount: Int = 0
+        public var remoteTracksCount: Int = 0
+        public var preferSpeakerOutput: Bool = true
 
         public var trackState: TrackState {
 
@@ -82,14 +96,16 @@ public class AudioManager: Loggable {
     // Singleton
     private init() {
         // trigger events when state mutates
-        _state.onMutate = { [weak self] newState, oldState in
+        _state.onDidMutate = { [weak self] newState, oldState in
             guard let self = self else { return }
-            self.configureAudioSession(newState: newState, oldState: oldState)
-        }
-    }
 
-    deinit {
-        //
+            log("\(oldState) -> \(newState)")
+
+            #if os(iOS)
+            let configureFunc = newState.customConfigureFunc ?? defaultConfigureAudioSessionFunc
+            configureFunc(newState, oldState)
+            #endif
+        }
     }
 
     internal func trackDidStart(_ type: Type) {
@@ -108,21 +124,6 @@ public class AudioManager: Loggable {
         }
     }
 
-    private func configureAudioSession(newState: State, oldState: State) {
-
-        log("\(oldState) -> \(newState)")
-
-        #if os(iOS)
-        if let _deprecatedFunc = LiveKit.onShouldConfigureAudioSession {
-            _deprecatedFunc(newState.trackState, oldState.trackState)
-        } else if let customConfigureAudioSessionFunc = customConfigureAudioSessionFunc {
-            customConfigureAudioSessionFunc(newState, oldState)
-        } else {
-            defaultConfigureAudioSessionFunc(newState: newState, oldState: oldState)
-        }
-        #endif
-    }
-
     #if os(iOS)
     /// The default implementation when audio session configuration is requested by the SDK.
     /// Configure the `RTCAudioSession` of `WebRTC` framework.
@@ -134,38 +135,48 @@ public class AudioManager: Loggable {
     ///   - setActive: passing true/false will call `AVAudioSession.setActive` internally
     public func defaultConfigureAudioSessionFunc(newState: State, oldState: State) {
 
-        DispatchQueue.webRTC.async { [weak self] in
+        DispatchQueue.liveKitWebRTC.async { [weak self] in
 
             guard let self = self else { return }
 
             // prepare config
             let configuration = RTCAudioSessionConfiguration.webRTC()
-            var categoryOptions: AVAudioSession.CategoryOptions = []
-            configuration.category = AVAudioSession.Category.playAndRecord.rawValue
 
             if newState.trackState == .remoteOnly && newState.preferSpeakerOutput {
-                configuration.mode = self.hasMacCatalyst ? AVAudioSession.Mode.default.rawValue :  AVAudioSession.Mode.videoChat.rawValue
+                /* .playback */
+                configuration.category = AVAudioSession.Category.playback.rawValue
+                configuration.mode = AVAudioSession.Mode.spokenAudio.rawValue
+                configuration.categoryOptions = [
+                    .mixWithOthers
+                ]
+
             } else if [.localOnly, .localAndRemote].contains(newState.trackState) ||
                         (newState.trackState == .remoteOnly && !newState.preferSpeakerOutput) {
 
+                /* .playAndRecord */
                 configuration.category = AVAudioSession.Category.playAndRecord.rawValue
 
                 if newState.preferSpeakerOutput {
                     // use .videoChat if speakerOutput is preferred
-                    configuration.mode = self.hasMacCatalyst ? AVAudioSession.Mode.default.rawValue :  AVAudioSession.Mode.videoChat.rawValue
+                    configuration.mode = AVAudioSession.Mode.videoChat.rawValue
                 } else {
                     // use .voiceChat if speakerOutput is not preferred
-                    configuration.mode = self.hasMacCatalyst ? AVAudioSession.Mode.default.rawValue :  AVAudioSession.Mode.voiceChat.rawValue
+                    configuration.mode = AVAudioSession.Mode.voiceChat.rawValue
                 }
+
+                configuration.categoryOptions = [
+                    .mixWithOthers,
+                    .allowBluetooth,
+                    .allowBluetoothA2DP,
+                    .allowAirPlay
+                ]
+
             } else {
-                configuration.mode = self.hasMacCatalyst ? AVAudioSession.Mode.default.rawValue :  AVAudioSession.Mode.videoChat.rawValue
+                /* .soloAmbient */
+                configuration.category = AVAudioSession.Category.soloAmbient.rawValue
+                configuration.mode = AVAudioSession.Mode.default.rawValue
+                configuration.categoryOptions = []
             }
-            if #available(iOS 14.5, *) {
-                categoryOptions = [.defaultToSpeaker, .allowBluetooth, .mixWithOthers, .overrideMutedMicrophoneInterruption]
-            } else {
-                categoryOptions = [.defaultToSpeaker, .allowBluetooth, .mixWithOthers]
-            }
-            configuration.categoryOptions = categoryOptions
 
             var setActive: Bool?
 
@@ -174,7 +185,7 @@ public class AudioManager: Loggable {
                 setActive = true
             } else if newState.trackState == .none, oldState.trackState != .none {
                 // deactivate audio session when there are no more local/remote audio tracks
-                setActive = true
+                setActive = false
             }
 
             // configure session
@@ -198,16 +209,4 @@ public class AudioManager: Loggable {
         }
     }
     #endif
-
-    var hasMacCatalyst: Bool {
-        #if targetEnvironment(macCatalyst)
-            return true
-        #else
-        if #available(iOS 14.0, *) {
-            return ProcessInfo.processInfo.isiOSAppOnMac
-        } else {
-            return false
-        }
-        #endif
-    }
 }

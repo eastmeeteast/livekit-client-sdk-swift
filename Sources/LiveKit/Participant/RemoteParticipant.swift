@@ -21,6 +21,9 @@ import Promises
 @objc
 public class RemoteParticipant: Participant {
 
+    @objc
+    public var rtpReceiver: RTCRtpReceiver?
+
     internal init(sid: Sid,
                   info: Livekit_ParticipantInfo?,
                   room: Room) {
@@ -83,8 +86,11 @@ public class RemoteParticipant: Participant {
         }
     }
 
-    internal func addSubscribedMediaTrack(rtcTrack: RTCMediaStreamTrack, sid: Sid) -> Promise<Void> {
-        var track: Track
+    internal func addSubscribedMediaTrack(rtcTrack: RTCMediaStreamTrack,
+                                          rtpReceiver: RTCRtpReceiver,
+                                          sid: Sid) -> Promise<Void> {
+
+        let track: Track
 
         guard let publication = getTrackPublication(sid: sid) else {
             log("Could not subscribe to mediaTrack \(sid), unable to locate track publication. existing sids: (\(_state.tracks.keys.joined(separator: ", ")))", .error)
@@ -118,11 +124,19 @@ public class RemoteParticipant: Participant {
             return Promise(error)
         }
 
+        self.rtpReceiver = rtpReceiver
+
         publication.set(track: track)
         publication.set(subscriptionAllowed: true)
         track._state.mutate { $0.sid = publication.sid }
 
+        assert(room.engine.subscriber != nil, "Subscriber is nil")
+        if let transport = room.engine.subscriber {
+            track.set(transport: transport, rtpReceiver: rtpReceiver)
+        }
+
         addTrack(publication: publication)
+
         return track.start().then(on: queue) { _ -> Void in
             self.delegates.notify(label: { "participant.didSubscribe \(publication)" }) {
                 $0.participant?(self, didSubscribe: publication, track: track)

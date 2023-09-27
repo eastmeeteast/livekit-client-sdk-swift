@@ -32,6 +32,11 @@ public protocol ParticipantDelegate: AnyObject {
     @objc(participant:didUpdateMetadata:) optional
     func participant(_ participant: Participant, didUpdate metadata: String?)
 
+    /// A ``Participant``'s name has updated.
+    /// `participant` Can be a ``LocalParticipant`` or a ``RemoteParticipant``.
+    @objc(participant:didUpdateName:) optional
+    func participant(_ participant: Participant, didUpdateName: String)
+
     /// The isSpeaking status of a ``Participant`` has changed.
     /// `participant` Can be a ``LocalParticipant`` or a ``RemoteParticipant``.
     @objc(participant:didUpdateSpeaking:) optional
@@ -99,6 +104,13 @@ public protocol ParticipantDelegate: AnyObject {
     func participant(_ participant: RemoteParticipant, didUnsubscribe publication: RemoteTrackPublication, track: Track)
 
     /// Data was received from a ``RemoteParticipant``.
-    @objc(participant:didReceiveData:) optional
+    ///
+    /// > Notice: Deprecated, use ``participant(_:didReceiveData:topic:)`` instead.
+    @objc(participant:didReceiveData:)
+    @available(*, deprecated, renamed: "participant(_:didReceiveData:topic:)")
+    optional
     func participant(_ participant: RemoteParticipant, didReceive data: Data)
+
+    @objc(participant:didReceiveData:topic:) optional
+    func participant(_ participant: RemoteParticipant, didReceiveData data: Data, topic: String)
 }

@@ -23,7 +23,7 @@ import Network
 #endif
 
 @objc
-public class Room: NSObject, Loggable {
+public class Room: NSObject, ObservableObject, Loggable {
 
     // MARK: - MulticastDelegate
 
@@ -63,6 +63,15 @@ public class Room: NSObject, Loggable {
     @objc
     public var isRecording: Bool { _state.isRecording }
 
+    @objc
+    public var maxParticipants: Int { _state.maxParticipants }
+
+    @objc
+    public var participantCount: Int { _state.numParticipants }
+
+    @objc
+    public var publishersCount: Int { _state.numPublishers }
+
     // expose engine's vars
     @objc
     public var url: String? { engine._state.url }
@@ -85,7 +94,9 @@ public class Room: NSObject, Loggable {
     // Reference to Engine
     internal let engine: Engine
 
-    internal struct State {
+    public var e2eeManager: E2EEManager?
+
+    internal struct State: Equatable {
         var options: RoomOptions
 
         var sid: String?
@@ -99,6 +110,10 @@ public class Room: NSObject, Loggable {
         var activeSpeakers = [Participant]()
 
         var isRecording: Bool = false
+
+        var maxParticipants: Int = 0
+        var numParticipants: Int = 0
+        var numPublishers: Int = 0
 
         @discardableResult
         mutating func getOrCreateRemoteParticipant(sid: Sid, info: Livekit_ParticipantInfo? = nil, room: Room) -> RemoteParticipant {
@@ -152,12 +167,12 @@ public class Room: NSObject, Loggable {
         AppStateListener.shared.add(delegate: self)
 
         // trigger events when state mutates
-        _state.onMutate = { [weak self] state, oldState in
+        _state.onDidMutate = { [weak self] newState, oldState in
 
             guard let self = self else { return }
 
             // metadata updated
-            if let metadata = state.metadata, metadata != oldState.metadata,
+            if let metadata = newState.metadata, metadata != oldState.metadata,
                // don't notify if empty string (first time only)
                (oldState.metadata == nil ? !metadata.isEmpty : true) {
 
@@ -173,30 +188,31 @@ public class Room: NSObject, Loggable {
             }
 
             // isRecording updated
-            if state.isRecording != oldState.isRecording {
+            if newState.isRecording != oldState.isRecording {
                 // proceed only if connected...
                 self.engine.executeIfConnected { [weak self] in
 
                     guard let self = self else { return }
 
-                    self.delegates.notify(label: { "room.didUpdate isRecording: \(state.isRecording)" }) {
-                        $0.room?(self, didUpdate: state.isRecording)
+                    self.delegates.notify(label: { "room.didUpdate isRecording: \(newState.isRecording)" }) {
+                        $0.room?(self, didUpdate: newState.isRecording)
                     }
                 }
+            }
+
+            // Notify Room when state mutates
+            Task.detached { @MainActor in
+                self.objectWillChange.send()
             }
         }
     }
 
     deinit {
         log()
-    }
-
-    public func startRecordingToFile(_ filePath: String) {
-        self.engine.startRecordingToFile(filePath)
-    }
-
-    public func stopRecordingToFile() {
-        self.engine.stopRecordingToFile()
+        // cleanup for E2EE
+        if self.e2eeManager != nil {
+            self.e2eeManager?.cleanUp()
+        }
     }
 
     @discardableResult
@@ -207,7 +223,7 @@ public class Room: NSObject, Loggable {
 
         log("connecting to room...", .info)
 
-        let state = _state.readCopy()
+        let state = _state.copy()
 
         guard state.localParticipant == nil else {
             log("localParticipant is not nil", .warning)
@@ -217,6 +233,12 @@ public class Room: NSObject, Loggable {
         // update options if specified
         if let roomOptions = roomOptions, roomOptions != state.options {
             _state.mutate { $0.options = roomOptions }
+        }
+
+        // enable E2EE
+        if roomOptions?.e2eeOptions != nil {
+            self.e2eeManager = E2EEManager(e2eeOptions: roomOptions!.e2eeOptions!)
+            self.e2eeManager!.setup(room: self)
         }
 
         // monitor.start(queue: monitorQueue)
@@ -287,9 +309,9 @@ internal extension Room {
     }
 }
 
-// MARK: - Private
+// MARK: - Internal
 
-private extension Room {
+internal extension Room {
 
     @discardableResult
     func cleanUpParticipants(notify _notify: Bool = true) -> Promise<Void> {
@@ -333,13 +355,13 @@ extension Room {
         engine.signalClient.sendSimulate(scenario: scenario)
     }
 
-    public func waitForPrimaryTransportConnect() -> Promise<Void> {
+    public func waitForPrimaryTransportConnect() -> Promise<Bool> {
         engine._state.mutate {
             $0.primaryTransportConnectedCompleter.wait(on: queue, .defaultTransportState, throw: { TransportError.timedOut(message: "primary transport didn't connect") })
         }
     }
 
-    public func waitForPublisherTransportConnect() -> Promise<Void> {
+    public func waitForPublisherTransportConnect() -> Promise<Bool> {
         engine._state.mutate {
             $0.publisherTransportConnectedCompleter.wait(on: queue, .defaultTransportState, throw: { TransportError.timedOut(message: "publisher transport didn't connect") })
         }
@@ -362,410 +384,6 @@ internal extension Room {
         // reset track settings for all RemoteTrackPublication
         for publication in remoteTrackPublications {
             publication.resetTrackSettings()
-        }
-    }
-}
-
-// MARK: - SignalClientDelegate
-
-extension Room: SignalClientDelegate {
-
-    func signalClient(_ signalClient: SignalClient, didReceiveLeave canReconnect: Bool, reason: Livekit_DisconnectReason) -> Bool {
-
-        log("canReconnect: \(canReconnect), reason: \(reason)")
-
-        if canReconnect {
-            // force .full for next reconnect
-            engine._state.mutate { $0.nextPreferredReconnectMode = .full }
-        } else {
-            // server indicates it's not recoverable
-            cleanUp(reason: reason.toLKType())
-        }
-
-        return true
-    }
-
-    func signalClient(_ signalClient: SignalClient, didUpdate trackSid: String, subscribedQualities: [Livekit_SubscribedQuality]) -> Bool {
-
-        log("qualities: \(subscribedQualities.map({ String(describing: $0) }).joined(separator: ", "))")
-
-        guard let localParticipant = _state.localParticipant else { return true }
-        localParticipant.onSubscribedQualitiesUpdate(trackSid: trackSid, subscribedQualities: subscribedQualities)
-        return true
-    }
-
-    func signalClient(_ signalClient: SignalClient, didReceive joinResponse: Livekit_JoinResponse) -> Bool {
-
-        log("server version: \(joinResponse.serverVersion), region: \(joinResponse.serverRegion)", .info)
-
-        _state.mutate {
-            $0.sid = joinResponse.room.sid
-            $0.name = joinResponse.room.name
-            $0.metadata = joinResponse.room.metadata
-            $0.serverVersion = joinResponse.serverVersion
-            $0.serverRegion = joinResponse.serverRegion.isEmpty ? nil : joinResponse.serverRegion
-            $0.isRecording = joinResponse.room.activeRecording
-
-            if joinResponse.hasParticipant {
-                $0.localParticipant = LocalParticipant(from: joinResponse.participant, room: self)
-            }
-
-            if !joinResponse.otherParticipants.isEmpty {
-                for otherParticipant in joinResponse.otherParticipants {
-                    $0.getOrCreateRemoteParticipant(sid: otherParticipant.sid, info: otherParticipant, room: self)
-                }
-            }
-        }
-
-        return true
-    }
-
-    func signalClient(_ signalClient: SignalClient, didUpdate room: Livekit_Room) -> Bool {
-        _state.mutate {
-            $0.metadata = room.metadata
-            $0.isRecording = room.activeRecording
-        }
-        return true
-    }
-
-    func signalClient(_ signalClient: SignalClient, didUpdate speakers: [Livekit_SpeakerInfo]) -> Bool {
-        log("speakers: \(speakers)", .trace)
-
-        let activeSpeakers = _state.mutate { state -> [Participant] in
-
-            var lastSpeakers = state.activeSpeakers.reduce(into: [Sid: Participant]()) { $0[$1.sid] = $1 }
-            for speaker in speakers {
-
-                guard let participant = speaker.sid == state.localParticipant?.sid ? state.localParticipant : state.remoteParticipants[speaker.sid] else {
-                    continue
-                }
-
-                participant._state.mutate {
-                    $0.audioLevel = speaker.level
-                    $0.isSpeaking = speaker.active
-                }
-
-                if speaker.active {
-                    lastSpeakers[speaker.sid] = participant
-                } else {
-                    lastSpeakers.removeValue(forKey: speaker.sid)
-                }
-            }
-
-            state.activeSpeakers = lastSpeakers.values.sorted(by: { $1.audioLevel > $0.audioLevel })
-
-            return state.activeSpeakers
-        }
-
-        engine.executeIfConnected { [weak self] in
-            guard let self = self else { return }
-
-            self.delegates.notify(label: { "room.didUpdate speakers: \(speakers)" }) {
-                $0.room?(self, didUpdate: activeSpeakers)
-            }
-        }
-
-        return true
-    }
-
-    func signalClient(_ signalClient: SignalClient, didUpdate connectionQuality: [Livekit_ConnectionQualityInfo]) -> Bool {
-        log("connectionQuality: \(connectionQuality)", .trace)
-
-        for entry in connectionQuality {
-            if let localParticipant = _state.localParticipant,
-               entry.participantSid == localParticipant.sid {
-                // update for LocalParticipant
-                localParticipant._state.mutate { $0.connectionQuality = entry.quality.toLKType() }
-            } else if let participant = _state.remoteParticipants[entry.participantSid] {
-                // udpate for RemoteParticipant
-                participant._state.mutate { $0.connectionQuality = entry.quality.toLKType() }
-            }
-        }
-
-        return true
-    }
-
-    func signalClient(_ signalClient: SignalClient, didUpdateRemoteMute trackSid: String, muted: Bool) -> Bool {
-        log("trackSid: \(trackSid) muted: \(muted)")
-
-        guard let publication = _state.localParticipant?._state.tracks[trackSid] as? LocalTrackPublication else {
-            // publication was not found but the delegate was handled
-            return true
-        }
-
-        if muted {
-            publication.mute()
-        } else {
-            publication.unmute()
-        }
-
-        return true
-    }
-
-    func signalClient(_ signalClient: SignalClient, didUpdate subscriptionPermission: Livekit_SubscriptionPermissionUpdate) -> Bool {
-
-        log("did update subscriptionPermission: \(subscriptionPermission)")
-
-        guard let participant = _state.remoteParticipants[subscriptionPermission.participantSid],
-              let publication = participant.getTrackPublication(sid: subscriptionPermission.trackSid) else {
-            return true
-        }
-
-        publication.set(subscriptionAllowed: subscriptionPermission.allowed)
-
-        return true
-    }
-
-    func signalClient(_ signalClient: SignalClient, didUpdate trackStates: [Livekit_StreamStateInfo]) -> Bool {
-
-        log("did update trackStates: \(trackStates.map { "(\($0.trackSid): \(String(describing: $0.state)))" }.joined(separator: ", "))")
-
-        for update in trackStates {
-            // Try to find RemoteParticipant
-            guard let participant = _state.remoteParticipants[update.participantSid] else { continue }
-            // Try to find RemoteTrackPublication
-            guard let trackPublication = participant._state.tracks[update.trackSid] as? RemoteTrackPublication else { continue }
-            // Update streamState (and notify)
-            trackPublication._state.mutate { $0.streamState = update.state.toLKType() }
-        }
-
-        return true
-    }
-
-    func signalClient(_ signalClient: SignalClient, didUpdate participants: [Livekit_ParticipantInfo]) -> Bool {
-        log("participants: \(participants)")
-
-        var disconnectedParticipants = [Sid]()
-        var newParticipants = [RemoteParticipant]()
-
-        _state.mutate {
-
-            for info in participants {
-
-                if info.sid == $0.localParticipant?.sid {
-                    $0.localParticipant?.updateFromInfo(info: info)
-                    continue
-                }
-
-                if info.state == .disconnected {
-                    // when it's disconnected, send updates
-                    disconnectedParticipants.append(info.sid)
-                } else {
-
-                    let isNewParticipant = $0.remoteParticipants[info.sid] == nil
-                    let participant = $0.getOrCreateRemoteParticipant(sid: info.sid, info: info, room: self)
-
-                    if isNewParticipant {
-                        newParticipants.append(participant)
-                    } else {
-                        participant.updateFromInfo(info: info)
-                    }
-                }
-            }
-        }
-
-        for sid in disconnectedParticipants {
-            onParticipantDisconnect(sid: sid)
-        }
-
-        for participant in newParticipants {
-
-            engine.executeIfConnected { [weak self] in
-                guard let self = self else { return }
-
-                self.delegates.notify(label: { "room.participantDidJoin participant: \(participant)" }) {
-                    $0.room?(self, participantDidJoin: participant)
-                }
-            }
-        }
-
-        return true
-    }
-
-    func signalClient(_ signalClient: SignalClient, didUnpublish localTrack: Livekit_TrackUnpublishedResponse) -> Bool {
-        log()
-
-        guard let localParticipant = localParticipant,
-              let publication = localParticipant._state.tracks[localTrack.trackSid] as? LocalTrackPublication else {
-            log("track publication not found", .warning)
-            return true
-        }
-
-        localParticipant.unpublish(publication: publication).then(on: queue) { [weak self] _ in
-            self?.log("unpublished track(\(localTrack.trackSid)")
-        }.catch(on: queue) { [weak self] error in
-            self?.log("failed to unpublish track(\(localTrack.trackSid), error: \(error)", .warning)
-        }
-
-        return true
-    }
-}
-
-// MARK: - EngineDelegate
-
-extension Room: EngineDelegate {
-
-    func engine(_ engine: Engine, didUpdate dataChannel: RTCDataChannel, state: RTCDataChannelState) {
-        //
-    }
-
-    func engine(_ engine: Engine, didMutate state: Engine.State, oldState: Engine.State) {
-
-        if state.connectionState != oldState.connectionState {
-            // connectionState did update
-
-            // only if quick-reconnect
-            if case .connected = state.connectionState, case .quick = state.reconnectMode {
-
-                resetTrackSettings()
-            }
-
-            // re-send track permissions
-            if case .connected = state.connectionState, let localParticipant = localParticipant {
-                localParticipant.sendTrackSubscriptionPermissions().catch(on: queue) { error in
-                    self.log("Failed to send track subscription permissions, error: \(error)", .error)
-                }
-            }
-
-            delegates.notify(label: { "room.didUpdate connectionState: \(state.connectionState) oldValue: \(oldState.connectionState)" }) {
-                // Objective-C support
-                $0.room?(self, didUpdate: state.connectionState.toObjCType(), oldValue: oldState.connectionState.toObjCType())
-                // Swift only
-                if let delegateSwift = $0 as? RoomDelegate {
-                    delegateSwift.room(self, didUpdate: state.connectionState, oldValue: oldState.connectionState)
-                }
-            }
-        }
-
-        if state.connectionState.isReconnecting && state.reconnectMode == .full && oldState.reconnectMode != .full {
-            // started full reconnect
-            cleanUpParticipants(notify: true)
-        }
-    }
-
-    func engine(_ engine: Engine, didGenerate trackStats: [TrackStats], target: Livekit_SignalTarget) {
-
-        let allParticipants = ([[localParticipant],
-                                _state.remoteParticipants.map { $0.value }] as [[Participant?]])
-            .joined()
-            .compactMap { $0 }
-
-        let allTracks = allParticipants.map { $0._state.tracks.values.map { $0.track } }.joined()
-            .compactMap { $0 }
-
-        // this relies on the last stat entry being the latest
-        for track in allTracks {
-            if let stats = trackStats.last(where: { $0.trackId == track.mediaTrack.trackId }) {
-                track.set(stats: stats)
-            }
-        }
-    }
-
-    func engine(_ engine: Engine, didUpdate speakers: [Livekit_SpeakerInfo]) {
-
-        let activeSpeakers = _state.mutate { state -> [Participant] in
-
-            var activeSpeakers: [Participant] = []
-            var seenSids = [String: Bool]()
-            for speaker in speakers {
-                seenSids[speaker.sid] = true
-                if let localParticipant = state.localParticipant,
-                   speaker.sid == localParticipant.sid {
-                    localParticipant._state.mutate {
-                        $0.audioLevel = speaker.level
-                        $0.isSpeaking = true
-                    }
-                    activeSpeakers.append(localParticipant)
-                } else {
-                    if let participant = state.remoteParticipants[speaker.sid] {
-                        participant._state.mutate {
-                            $0.audioLevel = speaker.level
-                            $0.isSpeaking = true
-                        }
-                        activeSpeakers.append(participant)
-                    }
-                }
-            }
-
-            if let localParticipant = state.localParticipant, seenSids[localParticipant.sid] == nil {
-                localParticipant._state.mutate {
-                    $0.audioLevel = 0.0
-                    $0.isSpeaking = false
-                }
-            }
-
-            for participant in state.remoteParticipants.values {
-                if seenSids[participant.sid] == nil {
-                    participant._state.mutate {
-                        $0.audioLevel = 0.0
-                        $0.isSpeaking = false
-                    }
-                }
-            }
-
-            return activeSpeakers
-        }
-
-        engine.executeIfConnected { [weak self] in
-            guard let self = self else { return }
-
-            self.delegates.notify(label: { "room.didUpdate speakers: \(activeSpeakers)" }) {
-                $0.room?(self, didUpdate: activeSpeakers)
-            }
-        }
-    }
-
-    func engine(_ engine: Engine, didAdd track: RTCMediaStreamTrack, streams: [RTCMediaStream]) {
-
-        guard !streams.isEmpty else {
-            log("Received onTrack with no streams!", .warning)
-            return
-        }
-
-        let unpacked = streams[0].streamId.unpack()
-        let participantSid = unpacked.sid
-        var trackSid = unpacked.trackId
-        if trackSid == "" {
-            trackSid = track.trackId
-        }
-
-        let participant = _state.mutate { $0.getOrCreateRemoteParticipant(sid: participantSid, room: self) }
-
-        log("added media track from: \(participantSid), sid: \(trackSid)")
-
-        _ = retry(attempts: 10, delay: 0.2) { _, error in
-            // if error is invalidTrackState, retry
-            guard case TrackError.state = error else { return false }
-            return true
-        } _: {
-            participant.addSubscribedMediaTrack(rtcTrack: track, sid: trackSid)
-        }
-    }
-
-    func engine(_ engine: Engine, didRemove track: RTCMediaStreamTrack) {
-        // find the publication
-        guard let publication = _state.remoteParticipants.values.map({ $0._state.tracks.values }).joined()
-                .first(where: { $0.sid == track.trackId }) else { return }
-        publication.set(track: nil)
-    }
-
-    func engine(_ engine: Engine, didReceive userPacket: Livekit_UserPacket) {
-        // participant could be null if data broadcasted from server
-        let participant = _state.remoteParticipants[userPacket.participantSid]
-
-        engine.executeIfConnected { [weak self] in
-            guard let self = self else { return }
-
-            self.delegates.notify(label: { "room.didReceive data: \(userPacket.payload)" }) {
-                $0.room?(self, participant: participant, didReceive: userPacket.payload)
-            }
-
-            if let participant = participant {
-                participant.delegates.notify(label: { "participant.didReceive data: \(userPacket.payload)" }) { [weak participant] (delegate) -> Void in
-                    guard let participant = participant else { return }
-                    delegate.participant?(participant, didReceive: userPacket.payload)
-                }
-            }
         }
     }
 }
@@ -811,6 +429,11 @@ extension Room: AppStateDelegate {
 
 extension Room {
 
+    @objc
+    public static var audioDeviceModule: RTCAudioDeviceModule {
+        Engine.audioDeviceModule
+    }
+
     /// Set this to true to bypass initialization of voice processing.
     /// Must be set before RTCPeerConnectionFactory gets initialized.
     @objc
@@ -820,34 +443,12 @@ extension Room {
     }
 }
 
-// MARK: - MulticastDelegate
+// MARK: - Audio Processing
 
-extension Room: MulticastDelegateProtocol {
-
-    public func add(delegate: RoomDelegate) {
-        delegates.add(delegate: delegate)
-    }
-
-    public func remove(delegate: RoomDelegate) {
-        delegates.remove(delegate: delegate)
-    }
+extension Room {
 
     @objc
-    public func removeAllDelegates() {
-        delegates.removeAllDelegates()
-    }
-
-    /// Only for Objective-C.
-    @objc(addDelegate:)
-    @available(swift, obsoleted: 1.0)
-    public func addObjC(delegate: RoomDelegateObjC) {
-        delegates.add(delegate: delegate)
-    }
-
-    /// Only for Objective-C.
-    @objc(removeDelegate:)
-    @available(swift, obsoleted: 1.0)
-    public func removeObjC(delegate: RoomDelegateObjC) {
-        delegates.remove(delegate: delegate)
+    public static var audioProcessingModule: RTCDefaultAudioProcessingModule {
+        Engine.audioProcessingModule
     }
 }

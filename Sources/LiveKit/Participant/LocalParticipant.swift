@@ -34,6 +34,8 @@ public class LocalParticipant: Participant {
     private var allParticipantsAllowed: Bool = true
     private var trackPermissions: [ParticipantTrackPermission] = []
 
+    @objc var rtpSender: RTCRtpSender?
+
     internal convenience init(from info: Livekit_ParticipantInfo,
                               room: Room) {
 
@@ -83,9 +85,10 @@ public class LocalParticipant: Participant {
             self.room.engine.signalClient.sendAddTrack(cid: track.mediaTrack.trackId,
                                                        name: track.name,
                                                        type: track.kind.toPBType(),
-                                                       source: track.source.toPBType()) { populator in
+                                                       source: track.source.toPBType(),
+                                                       encryption: self.room.e2eeManager?.e2eeOptions.encryptionType.toPBType() ?? .none ) { populator in
 
-                let transInit = DispatchQueue.webRTC.sync { RTCRtpTransceiverInit() }
+                let transInit = DispatchQueue.liveKitWebRTC.sync { RTCRtpTransceiverInit() }
                 transInit.direction = .sendOnly
 
                 if let track = track as? LocalVideoTrack {
@@ -145,21 +148,28 @@ public class LocalParticipant: Participant {
                                             }
         }.then(on: queue) { params -> Promise<(RTCRtpTransceiver, trackInfo: Livekit_TrackInfo)> in
             self.log("[publish] added transceiver: \(params.trackInfo)...")
+            self.rtpSender = params.transceiver.sender
             return track.onPublish().then(on: self.queue) { _ in params }
         }.then(on: queue) { (transceiver, trackInfo) -> LocalTrackPublication in
 
             // store publishOptions used for this track
             track._publishOptions = publishOptions
-            track.transceiver = transceiver
 
-            // prefer to maintainResolution for screen share
-            if case .screenShareVideo = track.source {
-                self.log("[publish] set degradationPreference to .maintainResolution")
-                let params = transceiver.sender.parameters
-                params.degradationPreference = NSNumber(value: RTCDegradationPreference.maintainResolution.rawValue)
-                // changing params directly doesn't work so we need to update params
-                // and set it back to sender.parameters
-                transceiver.sender.parameters = params
+            track.set(transport: publisher,
+                      rtpSender: transceiver.sender)
+
+            if track is LocalVideoTrack {
+                let publishOptions = (publishOptions as? VideoPublishOptions) ?? self.room._state.options.defaultVideoPublishOptions
+                // if screen share or simulcast is enabled,
+                // degrade resolution by using server's layer switching logic instead of WebRTC's logic
+                if track.source == .screenShareVideo || publishOptions.simulcast {
+                    self.log("[publish] set degradationPreference to .maintainResolution")
+                    let params = transceiver.sender.parameters
+                    params.degradationPreference = NSNumber(value: RTCDegradationPreference.maintainResolution.rawValue)
+                    // changing params directly doesn't work so we need to update params
+                    // and set it back to sender.parameters
+                    transceiver.sender.parameters = params
+                }
             }
 
             self.room.engine.publisherShouldNegotiate()
@@ -252,7 +262,7 @@ public class LocalParticipant: Participant {
         // engine.publisher must be accessed from engine.queue
         return stopTrackIfRequired().then(on: engine.queue) { _ -> Promise<Void> in
 
-            guard let publisher = engine.publisher, let sender = track.sender else {
+            guard let publisher = engine.publisher, let sender = track.rtpSender else {
                 return Promise(())
             }
 
@@ -266,16 +276,18 @@ public class LocalParticipant: Participant {
         }
     }
 
-    /**
-     publish data to the other participants in the room
-
-     Data is forwarded to each participant in the room. Each payload must not exceed 15k.
-     - Parameter data: Data to send
-     - Parameter reliability: Toggle between sending relialble vs lossy delivery.
-     For data that you need delivery guarantee (such as chat messages), use Reliable.
-     For data that should arrive as quickly as possible, but you are ok with dropped packets, use Lossy.
-     - Parameter destination: SIDs of the participants who will receive the message. If empty, deliver to everyone
-     */
+    /// Publish data to the other participants in the room
+    ///
+    /// Data is forwarded to each participant in the room. Each payload must not exceed 15k.
+    /// - Parameters:
+    ///   - data: Data to send
+    ///   - reliability: Toggle between sending relialble vs lossy delivery.
+    ///     For data that you need delivery guarantee (such as chat messages), use Reliable.
+    ///     For data that should arrive as quickly as possible, but you are ok with dropped packets, use Lossy.
+    ///   - destination: SIDs of the participants who will receive the message. If empty, deliver to everyone
+    ///
+    /// > Notice: Deprecated, use ``publish(data:reliability:destinations:topic:options:)-2581z`` instead.
+    @available(*, deprecated, renamed: "publish(data:reliability:destinations:topic:options:)")
     @discardableResult
     public func publishData(data: Data,
                             reliability: Reliability = .reliable,
@@ -285,6 +297,30 @@ public class LocalParticipant: Participant {
             $0.destinationSids = destination
             $0.payload = data
             $0.participantSid = self.sid
+        }
+
+        return room.engine.send(userPacket: userPacket,
+                                reliability: reliability)
+    }
+
+    ///
+    /// Promise version of ``publish(data:reliability:destinations:topic:options:)-75jme``.
+    ///
+    @discardableResult
+    public func publish(data: Data,
+                        reliability: Reliability = .reliable,
+                        destinations: [RemoteParticipant]? = nil,
+                        topic: String? = nil,
+                        options: DataPublishOptions? = nil) -> Promise<Void> {
+
+        let options = options ?? self.room._state.options.defaultDataPublishOptions
+        let destinations = destinations?.map { $0.sid }
+
+        let userPacket = Livekit_UserPacket.with {
+            $0.destinationSids = destinations ?? options.destinations
+            $0.payload = data
+            $0.participantSid = self.sid
+            $0.topic = topic ?? options.topic ?? ""
         }
 
         return room.engine.send(userPacket: userPacket,
@@ -318,6 +354,30 @@ public class LocalParticipant: Participant {
         return sendTrackSubscriptionPermissions()
     }
 
+    /// Sets and updates the metadata of the local participant.
+    ///
+    /// Note: this requires `CanUpdateOwnMetadata` permission encoded in the token.
+    public func set(metadata: String) -> Promise<Void> {
+        // mutate state to set metadata and copy name from state
+        let name = _state.mutate {
+            $0.metadata = metadata
+            return $0.name
+        }
+        return room.engine.signalClient.sendUpdateLocalMetadata(metadata, name: name)
+    }
+
+    /// Sets and updates the name of the local participant.
+    ///
+    /// Note: this requires `CanUpdateOwnMetadata` permission encoded in the token.
+    public func set(name: String) -> Promise<Void> {
+        // mutate state to set name and copy metadata from state
+        let metadata = _state.mutate {
+            $0.name = name
+            return $0.metadata
+        }
+        return room.engine.signalClient.sendUpdateLocalMetadata(metadata ?? "", name: name)
+    }
+
     internal func sendTrackSubscriptionPermissions() -> Promise<Void> {
 
         guard room.engine._state.connectionState == .connected else {
@@ -336,7 +396,7 @@ public class LocalParticipant: Participant {
 
         guard let pub = getTrackPublication(sid: trackSid),
               let track = pub.track as? LocalVideoTrack,
-              let sender = track.transceiver?.sender
+              let sender = track.rtpSender
         else { return }
 
         let parameters = sender.parameters
@@ -482,9 +542,11 @@ extension LocalParticipant {
                 var localTrack: LocalVideoTrack?
                 let options = (captureOptions as? ScreenShareCaptureOptions) ?? room._state.options.defaultScreenShareCaptureOptions
                 if options.useBroadcastExtension {
-                    let screenShareExtensionId = Bundle.main.infoDictionary?[BroadcastScreenCapturer.kRTCScreenSharingExtension] as? String
-                    RPSystemBroadcastPickerView.show(for: screenShareExtensionId,
-                                                     showsMicrophoneButton: false)
+                    Task { @MainActor in
+                        let screenShareExtensionId = Bundle.main.infoDictionary?[BroadcastScreenCapturer.kRTCScreenSharingExtension] as? String
+                        RPSystemBroadcastPickerView.show(for: screenShareExtensionId,
+                                                         showsMicrophoneButton: false)
+                    }
                     localTrack = LocalVideoTrack.createBroadcastScreenCapturerTrack(options: options)
                 } else {
                     localTrack = LocalVideoTrack.createInAppScreenShareTrack(options: options)

@@ -69,43 +69,59 @@ extension CMSampleBuffer {
 
         // Print out errors
         if osStatus == kCMSampleBufferError_AllocationFailed {
-            printDebug("osStatus == kCMSampleBufferError_AllocationFailed")
-        } else if osStatus == kCMSampleBufferError_RequiredParameterMissing {
-            printDebug("osStatus == kCMSampleBufferError_RequiredParameterMissing")
-        } else if osStatus == kCMSampleBufferError_AlreadyHasDataBuffer {
-            printDebug("osStatus == kCMSampleBufferError_AlreadyHasDataBuffer")
-        } else if osStatus == kCMSampleBufferError_BufferNotReady {
-            printDebug("osStatus == kCMSampleBufferError_BufferNotReady")
-        } else if osStatus == kCMSampleBufferError_SampleIndexOutOfRange {
-            printDebug("osStatus == kCMSampleBufferError_SampleIndexOutOfRange")
-        } else if osStatus == kCMSampleBufferError_BufferHasNoSampleSizes {
-            printDebug("osStatus == kCMSampleBufferError_BufferHasNoSampleSizes")
-        } else  if osStatus == kCMSampleBufferError_BufferHasNoSampleTimingInfo {
-            printDebug("osStatus == kCMSampleBufferError_BufferHasNoSampleTimingInfo")
-        } else if osStatus == kCMSampleBufferError_ArrayTooSmall {
-            printDebug("osStatus == kCMSampleBufferError_ArrayTooSmall")
-        } else if osStatus == kCMSampleBufferError_InvalidEntryCount {
-            printDebug("osStatus == kCMSampleBufferError_InvalidEntryCount")
-        } else if osStatus == kCMSampleBufferError_CannotSubdivide {
-            printDebug("osStatus == kCMSampleBufferError_CannotSubdivide")
-        } else if osStatus == kCMSampleBufferError_SampleTimingInfoInvalid {
-            printDebug("osStatus == kCMSampleBufferError_SampleTimingInfoInvalid")
-        } else if osStatus == kCMSampleBufferError_InvalidMediaTypeForOperation {
-            printDebug("osStatus == kCMSampleBufferError_InvalidMediaTypeForOperation")
-        } else if osStatus == kCMSampleBufferError_InvalidSampleData {
-            printDebug("osStatus == kCMSampleBufferError_InvalidSampleData")
-        } else if osStatus == kCMSampleBufferError_InvalidMediaFormat {
-            printDebug("osStatus == kCMSampleBufferError_InvalidMediaFormat")
-        } else if osStatus == kCMSampleBufferError_Invalidated {
-            printDebug("osStatus == kCMSampleBufferError_Invalidated")
-        } else if osStatus == kCMSampleBufferError_DataFailed {
-            printDebug("osStatus == kCMSampleBufferError_DataFailed")
-        } else if osStatus == kCMSampleBufferError_DataCanceled {
-            printDebug("osStatus == kCMSampleBufferError_DataCanceled")
+            print("osStatus == kCMSampleBufferError_AllocationFailed")
+        }
+        if osStatus == kCMSampleBufferError_RequiredParameterMissing {
+            print("osStatus == kCMSampleBufferError_RequiredParameterMissing")
+        }
+        if osStatus == kCMSampleBufferError_AlreadyHasDataBuffer {
+            print("osStatus == kCMSampleBufferError_AlreadyHasDataBuffer")
+        }
+        if osStatus == kCMSampleBufferError_BufferNotReady {
+            print("osStatus == kCMSampleBufferError_BufferNotReady")
+        }
+        if osStatus == kCMSampleBufferError_SampleIndexOutOfRange {
+            print("osStatus == kCMSampleBufferError_SampleIndexOutOfRange")
+        }
+        if osStatus == kCMSampleBufferError_BufferHasNoSampleSizes {
+            print("osStatus == kCMSampleBufferError_BufferHasNoSampleSizes")
+        }
+        if osStatus == kCMSampleBufferError_BufferHasNoSampleTimingInfo {
+            print("osStatus == kCMSampleBufferError_BufferHasNoSampleTimingInfo")
+        }
+        if osStatus == kCMSampleBufferError_ArrayTooSmall {
+            print("osStatus == kCMSampleBufferError_ArrayTooSmall")
+        }
+        if osStatus == kCMSampleBufferError_InvalidEntryCount {
+            print("osStatus == kCMSampleBufferError_InvalidEntryCount")
+        }
+        if osStatus == kCMSampleBufferError_CannotSubdivide {
+            print("osStatus == kCMSampleBufferError_CannotSubdivide")
+        }
+        if osStatus == kCMSampleBufferError_SampleTimingInfoInvalid {
+            print("osStatus == kCMSampleBufferError_SampleTimingInfoInvalid")
+        }
+        if osStatus == kCMSampleBufferError_InvalidMediaTypeForOperation {
+            print("osStatus == kCMSampleBufferError_InvalidMediaTypeForOperation")
+        }
+        if osStatus == kCMSampleBufferError_InvalidSampleData {
+            print("osStatus == kCMSampleBufferError_InvalidSampleData")
+        }
+        if osStatus == kCMSampleBufferError_InvalidMediaFormat {
+            print("osStatus == kCMSampleBufferError_InvalidMediaFormat")
+        }
+        if osStatus == kCMSampleBufferError_Invalidated {
+            print("osStatus == kCMSampleBufferError_Invalidated")
+        }
+        if osStatus == kCMSampleBufferError_DataFailed {
+            print("osStatus == kCMSampleBufferError_DataFailed")
+        }
+        if osStatus == kCMSampleBufferError_DataCanceled {
+            print("osStatus == kCMSampleBufferError_DataCanceled")
         }
 
         guard let buffer = sampleBuffer else {
-            printDebug("Cannot create sample buffer")
+            print("Cannot create sample buffer")
             return nil
         }
 
