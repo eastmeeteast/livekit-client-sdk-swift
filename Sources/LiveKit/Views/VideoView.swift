@@ -297,14 +297,16 @@ public class VideoView: NativeView, Loggable {
                     self._renderTimer.suspend()
                 }
 
-                self.delegates.notify(label: { "videoView.didUpdate isRendering: \(newState.isRendering)" }) {
+                self.delegates.notify(label: { "videoView.didUpdate isRendering: \(newState.isRendering)" }) {[weak self] in
+                    guard let self = self else { return }
                     $0.videoView?(self, didUpdate: newState.isRendering)
                 }
             }
 
             // viewSize updated
             if newState.viewSize != oldState.viewSize {
-                self.delegates.notify(label: { "videoView.didUpdate viewSize: \(newState.viewSize)" }) {
+                self.delegates.notify(label: { "videoView.didUpdate viewSize: \(newState.viewSize)" }) {[weak self] in
+                    guard let self = self else { return }
                     $0.videoView?(self, didUpdate: newState.viewSize)
                 }
             }

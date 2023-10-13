@@ -38,7 +38,8 @@ extension Room: EngineDelegate {
                 }
             }
 
-            delegates.notify(label: { "room.didUpdate connectionState: \(state.connectionState) oldValue: \(oldState.connectionState)" }) {
+            delegates.notify(label: { "room.didUpdate connectionState: \(state.connectionState) oldValue: \(oldState.connectionState)" }) { [weak self] in
+                guard let self = self else { return }
                 // Objective-C support
                 $0.room?(self, didUpdate: state.connectionState.toObjCType(), oldValue: oldState.connectionState.toObjCType())
                 // Swift only
@@ -125,7 +126,8 @@ extension Room: EngineDelegate {
         engine.executeIfConnected { [weak self] in
             guard let self = self else { return }
 
-            self.delegates.notify(label: { "room.didUpdate speakers: \(activeSpeakers)" }) {
+            self.delegates.notify(label: { "room.didUpdate speakers: \(activeSpeakers)" }) { [weak self] in
+                guard let self = self else { return }
                 $0.room?(self, didUpdate: activeSpeakers)
             }
         }
@@ -172,7 +174,8 @@ extension Room: EngineDelegate {
         engine.executeIfConnected { [weak self] in
             guard let self = self else { return }
 
-            self.delegates.notify(label: { "room.didReceive data: \(userPacket.payload)" }) {
+            self.delegates.notify(label: { "room.didReceive data: \(userPacket.payload)" }) { [weak self] in
+                guard let self = self else { return }
                 // deprecated
                 $0.room?(self, participant: participant, didReceive: userPacket.payload)
                 // new method with topic param

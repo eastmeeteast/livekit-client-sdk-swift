@@ -286,7 +286,8 @@ public class Track: NSObject, Loggable {
         }
 
         if _notify {
-            delegates.notify(label: { "track.didUpdate muted: \(newValue)" }) {
+            delegates.notify(label: { "track.didUpdate muted: \(newValue)" }) {[weak self] in
+                guard let self = self else { return }
                 $0.track?(self, didUpdate: newValue, shouldSendSignal: shouldSendSignal)
             }
         }
@@ -352,7 +353,8 @@ internal extension Track {
         _state.mutate { $0.dimensions = newValue }
 
         guard let videoTrack = self as? VideoTrack else { return true }
-        delegates.notify(label: { "track.didUpdate dimensions: \(newValue == nil ? "nil" : String(describing: newValue))" }) {
+        delegates.notify(label: { "track.didUpdate dimensions: \(newValue == nil ? "nil" : String(describing: newValue))" }) {[weak self] in
+            guard let _ = self else { return }
             $0.track?(videoTrack, didUpdate: newValue)
         }
 

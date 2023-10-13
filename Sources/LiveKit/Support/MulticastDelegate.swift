@@ -81,8 +81,8 @@ public class MulticastDelegate<T>: NSObject, Loggable {
     /// Notify delegates inside the queue.
     /// Label is captured inside the queue for thread safety reasons.
     internal func notify(label: (() -> String)? = nil, _ fnc: @escaping (T) -> Void) {
-
-        multicastQueue.async {
+        multicastQueue.async { [weak self] in
+            guard let self = self else { return }
 
             if let label = label {
                 self.log("[notify] \(label())", .debug)
@@ -93,7 +93,6 @@ public class MulticastDelegate<T>: NSObject, Loggable {
                     self.log("MulticastDelegate: skipping notify for \(delegate), not a type of \(T.self)", .warning)
                     continue
                 }
-
                 fnc(delegate)
             }
         }

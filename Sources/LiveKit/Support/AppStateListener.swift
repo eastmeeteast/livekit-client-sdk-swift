@@ -38,7 +38,8 @@ internal class AppStateListener: MulticastDelegate<AppStateDelegate> {
         #if os(iOS)
         center.addObserver(forName: UIApplication.didEnterBackgroundNotification,
                            object: nil,
-                           queue: OperationQueue.main) { (_) in
+                           queue: OperationQueue.main) { [weak self] (_) in
+            guard let self = self else { return }
 
             self.log("UIApplication.didEnterBackground")
             self.notify { $0.appDidEnterBackground() }
@@ -46,16 +47,16 @@ internal class AppStateListener: MulticastDelegate<AppStateDelegate> {
 
         center.addObserver(forName: UIApplication.willEnterForegroundNotification,
                            object: nil,
-                           queue: OperationQueue.main) { (_) in
-
+                           queue: OperationQueue.main) { [weak self] (_) in
+            guard let self = self else { return }
             self.log("UIApplication.willEnterForeground")
             self.notify { $0.appWillEnterForeground() }
         }
 
         center.addObserver(forName: UIApplication.willTerminateNotification,
                            object: nil,
-                           queue: OperationQueue.main) { (_) in
-
+                           queue: OperationQueue.main) { [weak self] (_) in
+            guard let self = self else { return }
             self.log("UIApplication.willTerminate")
             self.notify { $0.appWillTerminate() }
         }

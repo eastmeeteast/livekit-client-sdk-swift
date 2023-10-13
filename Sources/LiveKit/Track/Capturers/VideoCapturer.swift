@@ -129,7 +129,8 @@ public class VideoCapturer: NSObject, Loggable, VideoCapturerProtocol {
                 return false
             }
 
-            self.delegates.notify(label: { "capturer.didUpdate state: \(CapturerState.started)" }) {
+            self.delegates.notify(label: { "capturer.didUpdate state: \(CapturerState.started)" }) {[weak self] in
+                guard let self = self else { return }
                 $0.capturer?(self, didUpdate: .started)
             }
 
@@ -159,7 +160,8 @@ public class VideoCapturer: NSObject, Loggable, VideoCapturerProtocol {
                 return false
             }
 
-            self.delegates.notify(label: { "capturer.didUpdate state: \(CapturerState.stopped)" }) {
+            self.delegates.notify(label: { "capturer.didUpdate state: \(CapturerState.stopped)" }) {[weak self] in
+                guard let self = self else { return }
                 $0.capturer?(self, didUpdate: .stopped)
             }
 

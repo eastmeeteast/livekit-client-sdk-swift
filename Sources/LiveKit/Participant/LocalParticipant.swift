@@ -178,10 +178,12 @@ public class LocalParticipant: Participant {
             self.addTrack(publication: publication)
 
             // notify didPublish
-            self.delegates.notify(label: { "localParticipant.didPublish \(publication)" }) {
+            self.delegates.notify(label: { "localParticipant.didPublish \(publication)" }) { [weak self] in
+                guard let self = self else { return }
                 $0.localParticipant?(self, didPublish: publication)
             }
-            self.room.delegates.notify(label: { "localParticipant.didPublish \(publication)" }) {
+            self.room.delegates.notify(label: { "localParticipant.didPublish \(publication)" }) { [weak self] in
+                guard let self = self else { return }
                 $0.room?(self.room, localParticipant: self, didPublish: publication)
             }
 
@@ -230,10 +232,12 @@ public class LocalParticipant: Participant {
             Promise<Void>(on: queue) {
                 guard _notify else { return }
                 // notify unpublish
-                self.delegates.notify(label: { "localParticipant.didUnpublish \(publication)" }) {
+                self.delegates.notify(label: { "localParticipant.didUnpublish \(publication)" }) { [weak self] in
+                    guard let self = self else { return }
                     $0.localParticipant?(self, didUnpublish: publication)
                 }
-                self.room.delegates.notify(label: { "room.didUnpublish \(publication)" }) {
+                self.room.delegates.notify(label: { "room.didUnpublish \(publication)" }) { [weak self] in
+                    guard let self = self else { return }
                     $0.room?(self.room, localParticipant: self, didUnpublish: publication)
                 }
             }
@@ -446,10 +450,12 @@ public class LocalParticipant: Participant {
         let didUpdate = super.set(permissions: newValue)
 
         if didUpdate {
-            delegates.notify(label: { "participant.didUpdate permissions: \(newValue)" }) {
+            delegates.notify(label: { "participant.didUpdate permissions: \(newValue)" }) {[weak self] in
+                guard let self = self else { return }
                 $0.participant?(self, didUpdate: newValue)
             }
-            room.delegates.notify(label: { "room.didUpdate permissions: \(newValue)" }) {
+            room.delegates.notify(label: { "room.didUpdate permissions: \(newValue)" }) {[weak self] in
+                guard let self = self else { return }
                 $0.room?(self.room, participant: self, didUpdate: newValue)
             }
         }

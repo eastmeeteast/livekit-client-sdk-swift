@@ -127,10 +127,12 @@ public class TrackPublication: NSObject, ObservableObject, Loggable {
 
             if newState.streamState != oldState.streamState {
                 if let participant = self.participant as? RemoteParticipant, let trackPublication = self as? RemoteTrackPublication {
-                    participant.delegates.notify(label: { "participant.didUpdate \(trackPublication) streamState: \(newState.streamState)" }) {
+                    participant.delegates.notify(label: { "participant.didUpdate \(trackPublication) streamState: \(newState.streamState)" }) {[weak self] in
+                        guard let _ = self else { return }
                         $0.participant?(participant, didUpdate: trackPublication, streamState: newState.streamState)
                     }
-                    participant.room.delegates.notify(label: { "room.didUpdate \(trackPublication) streamState: \(newState.streamState)" }) {
+                    participant.room.delegates.notify(label: { "room.didUpdate \(trackPublication) streamState: \(newState.streamState)" }) {[weak self] in
+                        guard let _ = self else { return }
                         $0.room?(participant.room, participant: participant, didUpdate: trackPublication, streamState: newState.streamState)
                     }
                 }

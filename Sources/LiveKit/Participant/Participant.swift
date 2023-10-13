@@ -111,7 +111,8 @@ public class Participant: NSObject, ObservableObject, Loggable {
             guard let self = self else { return }
 
             if newState.isSpeaking != oldState.isSpeaking {
-                self.delegates.notify(label: { "participant.didUpdate isSpeaking: \(self.isSpeaking)" }) {
+                self.delegates.notify(label: { "participant.didUpdate isSpeaking: \(self.isSpeaking)" }) {[weak self] in
+                    guard let self = self else { return }
                     $0.participant?(self, didUpdate: self.isSpeaking)
                 }
             }
@@ -121,10 +122,12 @@ public class Participant: NSObject, ObservableObject, Loggable {
                // don't notify if empty string (first time only)
                (oldState.metadata == nil ? !metadata.isEmpty : true) {
 
-                self.delegates.notify(label: { "participant.didUpdate metadata: \(metadata)" }) {
+                self.delegates.notify(label: { "participant.didUpdate metadata: \(metadata)" }) {[weak self] in
+                    guard let self = self else { return }
                     $0.participant?(self, didUpdate: metadata)
                 }
-                self.room.delegates.notify(label: { "room.didUpdate metadata: \(metadata)" }) {
+                self.room.delegates.notify(label: { "room.didUpdate metadata: \(metadata)" }) {[weak self] in
+                    guard let self = self else { return }
                     $0.room?(self.room, participant: self, didUpdate: metadata)
                 }
             }
@@ -132,21 +135,25 @@ public class Participant: NSObject, ObservableObject, Loggable {
             // name updated
             if newState.name != oldState.name {
                 // notfy participant delegates
-                self.delegates.notify(label: { "participant.didUpdateName: \(newState.name)" }) {
+                self.delegates.notify(label: { "participant.didUpdateName: \(newState.name)" }) {[weak self] in
+                    guard let self = self else { return }
                     $0.participant?(self, didUpdateName: newState.name)
                 }
                 // notify room delegates
-                self.room.delegates.notify(label: { "room.didUpdateName: \(newState.name)" }) {
+                self.room.delegates.notify(label: { "room.didUpdateName: \(newState.name)" }) {[weak self] in
+                    guard let self = self else { return }
                     $0.room?(self.room, participant: self, didUpdateName: newState.name)
                 }
             }
 
             if newState.connectionQuality != oldState.connectionQuality {
 
-                self.delegates.notify(label: { "participant.didUpdate connectionQuality: \(self.connectionQuality)" }) {
+                self.delegates.notify(label: { "participant.didUpdate connectionQuality: \(self.connectionQuality)" }) {[weak self] in
+                    guard let self = self else { return }
                     $0.participant?(self, didUpdate: self.connectionQuality)
                 }
-                self.room.delegates.notify(label: { "room.didUpdate connectionQuality: \(self.connectionQuality)" }) {
+                self.room.delegates.notify(label: { "room.didUpdate connectionQuality: \(self.connectionQuality)" }) {[weak self] in
+                    guard let self = self else { return }
                     $0.room?(self.room, participant: self, didUpdate: self.connectionQuality)
                 }
             }

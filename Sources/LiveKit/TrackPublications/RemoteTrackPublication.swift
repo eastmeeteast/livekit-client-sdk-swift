@@ -149,10 +149,12 @@ public class RemoteTrackPublication: TrackPublication {
             }
 
             if let oldValue = oldValue, newValue == nil, let participant = participant as? RemoteParticipant {
-                participant.delegates.notify(label: { "participant.didUnsubscribe \(self)" }) {
+                participant.delegates.notify(label: { "participant.didUnsubscribe \(self)" }) {[weak self] in
+                    guard let self = self else { return }
                     $0.participant?(participant, didUnsubscribe: self, track: oldValue)
                 }
-                participant.room.delegates.notify(label: { "room.didUnsubscribe \(self)" }) {
+                participant.room.delegates.notify(label: { "room.didUnsubscribe \(self)" }) {[weak self] in
+                    guard let self = self else { return }
                     $0.room?(participant.room, participant: participant, didUnsubscribe: self, track: oldValue)
                 }
             }
@@ -201,10 +203,12 @@ internal extension RemoteTrackPublication {
 
         // if track exists, track will emit the following events
         if track == nil {
-            participant.delegates.notify(label: { "participant.didUpdate muted: \(newValue)" }) {
+            participant.delegates.notify(label: { "participant.didUpdate muted: \(newValue)" }) {[weak self] in
+                guard let self = self else { return }
                 $0.participant?(participant, didUpdate: self, muted: newValue)
             }
-            participant.room.delegates.notify(label: { "room.didUpdate muted: \(newValue)" }) {
+            participant.room.delegates.notify(label: { "room.didUpdate muted: \(newValue)" }) {[weak self] in
+                guard let self = self else { return }
                 $0.room?(participant.room, participant: participant, didUpdate: self, muted: newValue)
             }
         }
@@ -215,10 +219,12 @@ internal extension RemoteTrackPublication {
         _state.mutate { $0.subscriptionAllowed = newValue }
 
         guard let participant = self.participant as? RemoteParticipant else { return }
-        participant.delegates.notify(label: { "participant.didUpdate permission: \(newValue)" }) {
+        participant.delegates.notify(label: { "participant.didUpdate permission: \(newValue)" }) {[weak self] in
+            guard let self = self else { return }
             $0.participant?(participant, didUpdate: self, permission: newValue)
         }
-        participant.room.delegates.notify(label: { "room.didUpdate permission: \(newValue)" }) {
+        participant.room.delegates.notify(label: { "room.didUpdate permission: \(newValue)" }) {[weak self] in
+            guard let self = self else { return }
             $0.room?(participant.room, participant: participant, didUpdate: self, permission: newValue)
         }
     }
