@@ -141,41 +141,29 @@ public class AudioManager: Loggable {
 
             // prepare config
             let configuration = RTCAudioSessionConfiguration.webRTC()
-
+            var categoryOptions: AVAudioSession.CategoryOptions = []
+            configuration.category = AVAudioSession.Category.playAndRecord.rawValue
             if newState.trackState == .remoteOnly && newState.preferSpeakerOutput {
-                /* .playback */
-                configuration.category = AVAudioSession.Category.playback.rawValue
-                configuration.mode = AVAudioSession.Mode.spokenAudio.rawValue
-                configuration.categoryOptions = [
-                    .mixWithOthers
-                ]
-
+                configuration.mode = self.hasMacCatalyst ? AVAudioSession.Mode.default.rawValue :  AVAudioSession.Mode.videoChat.rawValue
             } else if [.localOnly, .localAndRemote].contains(newState.trackState) ||
                         (newState.trackState == .remoteOnly && !newState.preferSpeakerOutput) {
 
-                /* .playAndRecord */
-                configuration.category = AVAudioSession.Category.playAndRecord.rawValue
-
                 if newState.preferSpeakerOutput {
                     // use .videoChat if speakerOutput is preferred
-                    configuration.mode = AVAudioSession.Mode.videoChat.rawValue
+                    configuration.mode = self.hasMacCatalyst ? AVAudioSession.Mode.default.rawValue :  AVAudioSession.Mode.videoChat.rawValue
                 } else {
                     // use .voiceChat if speakerOutput is not preferred
-                    configuration.mode = AVAudioSession.Mode.voiceChat.rawValue
+                    configuration.mode = self.hasMacCatalyst ? AVAudioSession.Mode.default.rawValue :  AVAudioSession.Mode.voiceChat.rawValue
                 }
-
-                configuration.categoryOptions = [
-                    .allowBluetooth,
-                    .allowBluetoothA2DP,
-                    .allowAirPlay
-                ]
-
             } else {
-                /* .soloAmbient */
-                configuration.category = AVAudioSession.Category.soloAmbient.rawValue
-                configuration.mode = AVAudioSession.Mode.default.rawValue
-                configuration.categoryOptions = []
+                configuration.mode = self.hasMacCatalyst ? AVAudioSession.Mode.default.rawValue :  AVAudioSession.Mode.videoChat.rawValue
             }
+            if #available(iOS 14.5, *) {
+                categoryOptions = [.defaultToSpeaker, .allowBluetooth, .mixWithOthers, .allowBluetoothA2DP, .allowAirPlay, .overrideMutedMicrophoneInterruption]
+            } else {
+                categoryOptions = [.defaultToSpeaker, .allowBluetooth, .mixWithOthers, .allowBluetoothA2DP, .allowAirPlay]
+            }
+            configuration.categoryOptions = categoryOptions
 
             var setActive: Bool?
 
@@ -184,7 +172,7 @@ public class AudioManager: Loggable {
                 setActive = true
             } else if newState.trackState == .none, oldState.trackState != .none {
                 // deactivate audio session when there are no more local/remote audio tracks
-                setActive = false
+                setActive = true
             }
 
             // configure session
@@ -208,4 +196,16 @@ public class AudioManager: Loggable {
         }
     }
     #endif
+
+    var hasMacCatalyst: Bool {
+        #if targetEnvironment(macCatalyst)
+            return true
+        #else
+        if #available(iOS 14.0, *) {
+            return ProcessInfo.processInfo.isiOSAppOnMac
+        } else {
+            return false
+        }
+        #endif
+    }
 }
