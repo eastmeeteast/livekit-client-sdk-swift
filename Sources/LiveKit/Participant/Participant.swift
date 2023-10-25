@@ -120,7 +120,7 @@ public class Participant: NSObject, ObservableObject, Loggable {
             // metadata updated
             if let metadata = newState.metadata, metadata != oldState.metadata,
                // don't notify if empty string (first time only)
-               (oldState.metadata == nil ? !metadata.isEmpty : true) {
+               oldState.metadata == nil ? !metadata.isEmpty : true {
 
                 self.delegates.notify(label: { "participant.didUpdate metadata: \(metadata)" }) {[weak self] in
                     guard let self = self else { return }
