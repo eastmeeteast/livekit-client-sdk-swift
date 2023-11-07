@@ -159,9 +159,9 @@ public class AudioManager: Loggable {
                 configuration.mode = self.hasMacCatalyst ? AVAudioSession.Mode.default.rawValue :  AVAudioSession.Mode.videoChat.rawValue
             }
             if #available(iOS 14.5, *) {
-                categoryOptions = [.defaultToSpeaker, .allowBluetooth, .mixWithOthers, .allowBluetoothA2DP, .allowAirPlay, .overrideMutedMicrophoneInterruption]
+                categoryOptions = [.defaultToSpeaker, .allowBluetooth, .mixWithOthers, .overrideMutedMicrophoneInterruption]
             } else {
-                categoryOptions = [.defaultToSpeaker, .allowBluetooth, .mixWithOthers, .allowBluetoothA2DP, .allowAirPlay]
+                categoryOptions = [.defaultToSpeaker, .allowBluetooth, .mixWithOthers]
             }
             configuration.categoryOptions = categoryOptions
 
