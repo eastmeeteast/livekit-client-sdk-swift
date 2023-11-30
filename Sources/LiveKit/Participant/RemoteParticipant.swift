@@ -156,9 +156,8 @@ public class RemoteParticipant: Participant {
 
     internal override func cleanUp(notify _notify: Bool = true) -> Promise<Void> {
         super.cleanUp(notify: _notify).then(on: queue) {
-            self.room.delegates.notify(label: { "room.participantDidLeave" }) {[weak self] in
-                guard let self = self else { return }
-                $0.room?(self.room, participantDidLeave: self)
+            self.room.delegates.notify(label: { "room.participantDidLeave" }) {
+                 $0.room?(self.room, participantDidLeave: self)
             }
         }
     }
