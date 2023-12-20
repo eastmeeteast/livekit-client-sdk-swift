@@ -236,7 +236,7 @@ public class VideoView: NativeView, Loggable {
 
                             if let nr = self.nativeRenderer {
                                 self.log("removing nativeRenderer")
-                                nr.removeFromSuperview()
+//                                nr.removeFromSuperview()
                                 self.nativeRenderer = nil
                             }
 
@@ -499,7 +499,7 @@ private extension VideoView {
             // copy frame from old renderer
             newView.frame = oldView.frame
             // remove if existed
-            oldView.removeFromSuperview()
+//            oldView.removeFromSuperview()
         }
 
         // ensure debug info is most front
